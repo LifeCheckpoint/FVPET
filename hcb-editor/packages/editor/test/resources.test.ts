@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   addAudio,
   addBackground,
+  addBackgrounds,
   addCharacter,
   applyCommand,
   createProject,
@@ -49,6 +50,20 @@ describe('resource commands', () => {
     expect(state.resources.backgrounds[0]!.id).toBe('b1');
     expect(state.resources.audios).toHaveLength(1);
     expect(state.resources.audios[0]!.id).toBe('a2');
+  });
+
+  it('bulk adds backgrounds in a single command (one undo step)', () => {
+    const next = applyCommand(emptyState(), addBackgrounds([
+      { name: 'bg_240', variant: 240, bgFn: 226337, image: 'data:image/png;base64,x' },
+      { name: 'bg_241', variant: 241, bgFn: 226337 },
+    ])).next;
+
+    expect(next.resources.backgrounds).toHaveLength(2);
+    expect(next.resources.backgrounds[0]!.name).toBe('bg_240');
+    expect(next.resources.backgrounds[0]!.variant).toBe(240);
+    expect(next.resources.backgrounds[0]!.bgFn).toBe(226337);
+    expect(next.resources.backgrounds[0]!.image).toBe('data:image/png;base64,x');
+    expect(next.resources.backgrounds[1]!.name).toBe('bg_241');
   });
 
   it('removes a character by id', () => {

@@ -11,6 +11,7 @@ import {
   addAudio,
   addAudios,
   addBackground,
+  addBackgrounds,
   editAudio,
   editBackground,
   editCharacter,
@@ -24,7 +25,10 @@ import {
   type EditorState,
   type EditorStore,
 } from '@hcb-editor/editor';
+import { loadBaseGame } from '@hcb-editor/compiler';
 import { importGraphBsFile } from '../resources/graph-bs.js';
+import { importGraphBgFile } from '../resources/graph-bg.js';
+import { importBgmBinFile } from '../resources/audio-bin.js';
 
 type Tab = 'characters' | 'backgrounds' | 'audios';
 
@@ -428,6 +432,74 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
     }
   };
 
+  /** 导入内置背景文件（graph_bg.bin）：按编号去重保留默认变体，匹配底座 bgFn。 */
+  const importBuiltinBackgrounds = async (file: File): Promise<void> => {
+    setImportingCount((c) => c + 1);
+    setImportProgress(null);
+    try {
+      const base = loadBaseGame(state.header.game).tables.backgrounds;
+      const result = await importGraphBgFile(file, {
+        maxDimension: 1280,
+        baseBackgrounds: base,
+        onProgress: (done, total) => setImportProgress({ done, total }),
+      });
+      if (result.backgrounds.length > 0) {
+        store.dispatch(addBackgrounds(result.backgrounds));
+      }
+      window.alert(`内置背景导入完成：${result.backgrounds.length} 张背景${result.skipped > 0 ? `，跳过 ${result.skipped}` : ''}`);
+    } catch (err) {
+      window.alert(`内置背景导入失败：${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setImportingCount((c) => c - 1);
+      setImportProgress(null);
+    }
+  };
+
+  /** 导入内置 CG（graph_vis.bin / graph_vish.bin）：全量导入为全屏背景。 */
+  const importBuiltinCg = async (files: File[]): Promise<void> => {
+    setImportingCount((c) => c + 1);
+    setImportProgress(null);
+    try {
+      const base = loadBaseGame(state.header.game).tables.backgrounds;
+      let total = 0;
+      let skipped = 0;
+      for (const file of files) {
+        const result = await importGraphBgFile(file, {
+          maxDimension: 1024,
+          baseBackgrounds: base,
+          onProgress: (done, count) => setImportProgress({ done, total: count }),
+        });
+        if (result.backgrounds.length > 0) {
+          store.dispatch(addBackgrounds(result.backgrounds));
+        }
+        total += result.backgrounds.length;
+        skipped += result.skipped;
+      }
+      window.alert(`内置CG导入完成：${total} 张CG${skipped > 0 ? `，跳过 ${skipped}` : ''}`);
+    } catch (err) {
+      window.alert(`内置CG导入失败：${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setImportingCount((c) => c - 1);
+      setImportProgress(null);
+    }
+  };
+
+  /** 导入内置音频（bgm.bin）：70 条 OGG → audio data URL。 */
+  const importBuiltinAudios = async (file: File): Promise<void> => {
+    setImportingCount((c) => c + 1);
+    try {
+      const result = await importBgmBinFile(file);
+      if (result.audios.length > 0) {
+        store.dispatch(addAudios(result.audios));
+      }
+      window.alert(`内置音频导入完成：${result.audios.length} 条${result.skipped > 0 ? `，跳过 ${result.skipped}` : ''}`);
+    } catch (err) {
+      window.alert(`内置音频导入失败：${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setImportingCount((c) => c - 1);
+    }
+  };
+
   const openChar = openCharId !== null ? (state.resources.characters.find((c) => c.id === openCharId) ?? null) : null;
 
   return (
@@ -622,15 +694,63 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
             </label>
           )}
           {tab === 'backgrounds' && (
-            <button type="button" className="btn btn--secondary" onClick={() => store.dispatch(addBackground({ name: '新背景', variant: 0, bgFn: null }))}>
-              + 添加背景
-            </button>
+            <>
+              <button type="button" className="btn btn--secondary" onClick={() => store.dispatch(addBackground({ name: '新背景', variant: 0, bgFn: null }))}>
+                + 添加背景
+              </button>
+              <label className="btn btn--secondary">
+                导入内置背景文件
+                <input
+                  type="file"
+                  accept=".bin"
+                  hidden
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      void importBuiltinBackgrounds(file);
+                    }
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+              <label className="btn btn--secondary">
+                导入内置CG文件
+                <input
+                  type="file"
+                  accept=".bin"
+                  multiple
+                  hidden
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files ?? []);
+                    if (files.length > 0) {
+                      void importBuiltinCg(files);
+                    }
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+            </>
           )}
           {tab === 'audios' && (
             <>
               <button type="button" className="btn btn--secondary" onClick={() => store.dispatch(addAudio({ type: 'bgm', number: 0, label: '' }))}>
                 + 添加音频
               </button>
+              <label className="btn btn--secondary">
+                导入内置音频文件
+                <input
+                  type="file"
+                  accept=".bin"
+                  hidden
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      void importBuiltinAudios(file);
+                    }
+                    e.target.value = '';
+                  }}
+                />
+              </label>
               <label className="btn btn--secondary">
                 批量导入音频
                 <input

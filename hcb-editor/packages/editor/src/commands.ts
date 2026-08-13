@@ -33,6 +33,7 @@ export type Command =
   | { readonly kind: 'edit_character'; readonly id: string; readonly character: CharacterResource }
   | { readonly kind: 'edit_characters'; readonly edits: readonly { readonly id: string; readonly character: CharacterResource }[] }
   | { readonly kind: 'add_background'; readonly background: Omit<BackgroundResource, 'id'> }
+  | { readonly kind: 'add_backgrounds'; readonly backgrounds: readonly Omit<BackgroundResource, 'id'>[] }
   | { readonly kind: 'remove_background'; readonly id: string }
   | { readonly kind: 'edit_background'; readonly id: string; readonly background: BackgroundResource }
   | { readonly kind: 'add_audio'; readonly audio: Omit<AudioResource, 'id'> }
@@ -244,6 +245,14 @@ export function applyCommand(state: EditorState, cmd: Command): ApplyResult {
         draft.nextId += 1;
         break;
       }
+      case 'add_backgrounds': {
+        for (const background of cmd.backgrounds) {
+          const id = `b${draft.nextId}`;
+          draft.resources.backgrounds.push({ id, ...background });
+          draft.nextId += 1;
+        }
+        break;
+      }
       case 'remove_background': {
         const idx = draft.resources.backgrounds.findIndex((r) => r.id === cmd.id);
         if (idx >= 0) {
@@ -412,6 +421,10 @@ export function editCharacters(edits: readonly { readonly id: string; readonly c
 
 export function addBackground(background: Omit<BackgroundResource, 'id'>): Command {
   return { kind: 'add_background', background };
+}
+
+export function addBackgrounds(backgrounds: readonly Omit<BackgroundResource, 'id'>[]): Command {
+  return { kind: 'add_backgrounds', backgrounds };
 }
 
 export function removeBackground(id: string): Command {
