@@ -134,29 +134,27 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
   const [tab, setTab] = useState<Tab>('characters');
 
   return (
-    <div className="modal" role="dialog" aria-modal="true" aria-label="资源管理器">
-      <div className="modal__backdrop" onClick={onClose} />
-      <div className="modal__panel modal__panel--wide">
-        <header className="modal__header">
-          <span className="modal__title">资源管理器</span>
-          <button type="button" className="modal__close" aria-label="关闭" onClick={onClose}>
-            ×
-          </button>
-        </header>
+    <div className="workspace">
+      <header className="workspace__header">
+        <span className="workspace__title">资源工作台</span>
+        <button type="button" className="topbar-btn" onClick={onClose}>
+          ← 返回编辑器
+        </button>
+      </header>
 
-        <div className="modal__tabs" role="tablist">
-          <button type="button" role="tab" aria-selected={tab === 'characters'} className={`modal__tab${tab === 'characters' ? ' modal__tab--active' : ''}`} onClick={() => setTab('characters')}>
-            角色
-          </button>
-          <button type="button" role="tab" aria-selected={tab === 'backgrounds'} className={`modal__tab${tab === 'backgrounds' ? ' modal__tab--active' : ''}`} onClick={() => setTab('backgrounds')}>
-            背景
-          </button>
-          <button type="button" role="tab" aria-selected={tab === 'audios'} className={`modal__tab${tab === 'audios' ? ' modal__tab--active' : ''}`} onClick={() => setTab('audios')}>
-            音频
-          </button>
-        </div>
+      <div className="workspace__tabs" role="tablist">
+        <button type="button" role="tab" aria-selected={tab === 'characters'} className={`workspace__tab${tab === 'characters' ? ' workspace__tab--active' : ''}`} onClick={() => setTab('characters')}>
+          角色
+        </button>
+        <button type="button" role="tab" aria-selected={tab === 'backgrounds'} className={`workspace__tab${tab === 'backgrounds' ? ' workspace__tab--active' : ''}`} onClick={() => setTab('backgrounds')}>
+          背景
+        </button>
+        <button type="button" role="tab" aria-selected={tab === 'audios'} className={`workspace__tab${tab === 'audios' ? ' workspace__tab--active' : ''}`} onClick={() => setTab('audios')}>
+          音频
+        </button>
+      </div>
 
-        <div className="modal__body">
+      <div className="workspace__body">
           {tab === 'characters' && (
             <div className="resource-grid">
               {state.resources.characters.length === 0 && (
@@ -172,8 +170,11 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
                         {r.name.trim().slice(0, 1) || '?'}
                       </span>
                     )}
+                    {r.builtin && <span className="resource-card__badge">内置</span>}
                     <input className="resource-card__name" value={r.name} onChange={(e) => store.dispatch(editCharacter(r.id, updateCharacter(r, { name: e.target.value })))} />
-                    <button type="button" className="resource-card__remove" aria-label="删除角色" onClick={() => store.dispatch(removeCharacter(r.id))}>×</button>
+                    {!r.builtin && (
+                      <button type="button" className="resource-card__remove" aria-label="删除角色" onClick={() => store.dispatch(removeCharacter(r.id))}>×</button>
+                    )}
                   </header>
                   <label className="resource-card__import">
                     {r.image ? '更换立绘' : '导入立绘'}
@@ -380,7 +381,7 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
           )}
         </div>
 
-        <footer className="modal__footer">
+        <footer className="workspace__footer">
           {tab === 'characters' && (
             <button type="button" className="btn btn--secondary" onClick={() => store.dispatch(addCharacter({ name: '新角色', speakFn: null, pose: 0, costume: 0, face: 0, poses: [] }))}>
               + 添加角色
@@ -397,7 +398,6 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
             </button>
           )}
         </footer>
-      </div>
     </div>
   );
 }

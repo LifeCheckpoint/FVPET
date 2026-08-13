@@ -23,6 +23,7 @@ import { PreviewPanel } from '../preview/PreviewPanel.js';
 import type { CreatableNodeKind } from '../theme/meta.js';
 
 type RightView = 'property' | 'script' | 'timeline';
+type MainView = 'editor' | 'workspace';
 
 export function AppShell() {
   const { store, state } = useEditorStore();
@@ -31,7 +32,7 @@ export function AppShell() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [rightView, setRightView] = useState<RightView>('property');
-  const [showResources, setShowResources] = useState(false);
+  const [view, setView] = useState<MainView>('editor');
   const [showSettings, setShowSettings] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
   const wizardShown = useRef(false);
@@ -105,6 +106,26 @@ const exportHcb = () => {
           FVP 剧情编辑器
           {store.isDirty && <span className="app__dirty" title="有未保存的改动"> *</span>}
         </span>
+        <nav className="app__views" role="tablist" aria-label="主视图">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === 'editor'}
+            className={`app__view${view === 'editor' ? ' app__view--active' : ''}`}
+            onClick={() => setView('editor')}
+          >
+            剧情编辑器
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === 'workspace'}
+            className={`app__view${view === 'workspace' ? ' app__view--active' : ''}`}
+            onClick={() => setView('workspace')}
+          >
+            资源工作台
+          </button>
+        </nav>
         <div className="app__topbar-actions">
           <button type="button" className="topbar-btn" disabled={!store.canUndo} onClick={() => store.undo()}>
             撤销
@@ -134,7 +155,7 @@ const exportHcb = () => {
           <button type="button" className="topbar-btn" onClick={exportHcb}>
             导出 .hcb
           </button>
-          <button type="button" className="topbar-btn" onClick={() => setShowResources(true)}>
+          <button type="button" className="topbar-btn" onClick={() => setView('workspace')}>
             资源
           </button>
           <button type="button" className="topbar-btn" onClick={() => setShowSettings(true)}>
@@ -146,8 +167,9 @@ const exportHcb = () => {
         </div>
       </header>
 
-      <div className="app__body">
-        <Palette onAdd={addNode} onOpenResources={() => setShowResources(true)} />
+      {view === 'editor' ? (
+        <div className="app__body">
+        <Palette onAdd={addNode} onOpenResources={() => setView('workspace')} />
 
         <main className="app__canvas">
           <ReactFlowProvider>
@@ -211,9 +233,11 @@ const exportHcb = () => {
             </div>
           </div>
         </section>
-      </div>
+        </div>
+      ) : (
+        <ResourceManager state={state} store={store} onClose={() => setView('editor')} />
+      )}
 
-      {showResources && <ResourceManager state={state} store={store} onClose={() => setShowResources(false)} />}
       {showSettings && <Settings prefs={prefs} update={update} onClose={() => setShowSettings(false)} />}
       {showWizard && <NewProjectWizard store={store} defaultNls={prefs.defaultNls} onClose={() => setShowWizard(false)} />}
     </div>

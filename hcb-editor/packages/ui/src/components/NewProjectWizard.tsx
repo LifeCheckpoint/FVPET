@@ -3,6 +3,7 @@
  */
 
 import { useState } from 'react';
+import { loadBaseGame } from '@hcb-editor/compiler';
 import { BASE_GAMES, createProject, type EditorStore } from '@hcb-editor/editor';
 import type { NlsPreference } from '../preferences/preferences.js';
 
@@ -17,7 +18,22 @@ export function NewProjectWizard({ store, defaultNls, onClose }: NewProjectWizar
   const [nls, setNls] = useState<NlsPreference>(defaultNls);
 
   const create = () => {
-    store.load(createProject({ game, nls }));
+    // 预置底座角色：内置角色（builtin，speakFn 锁定）进入资源表，供立绘导入与节点快速选。
+    const base = loadBaseGame(game);
+    const builtinCharacters = Object.entries(base.tables.characters).map(([name, c], i) => ({
+      id: `bc${i}`,
+      name,
+      speakFn: c.speakFn,
+      builtin: true,
+      pose: 0,
+      costume: 0,
+      face: 0,
+    }));
+    const project = createProject({ game, nls });
+    store.load({
+      ...project,
+      resources: { ...project.resources, characters: builtinCharacters },
+    });
     onClose();
   };
 
