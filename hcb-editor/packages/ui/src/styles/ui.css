@@ -1617,6 +1617,50 @@
   border-top: 1px solid var(--border-default);
 }
 
+.import-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+
+.import-progress__bar {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--bg-surface);
+}
+
+.import-progress__bar::after {
+  content: '';
+  display: block;
+  width: 40%;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+  animation: import-progress-slide 1s ease-in-out infinite;
+}
+
+@keyframes import-progress-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(350%);
+  }
+}
+
+.import-progress__text {
+  flex: none;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
 .import-queue {
   display: flex;
   flex-direction: column;

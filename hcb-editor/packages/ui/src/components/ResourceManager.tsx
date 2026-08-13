@@ -161,7 +161,9 @@ export interface ResourceManagerProps {
 export function ResourceManager({ state, store, onClose }: ResourceManagerProps) {
   const [tab, setTab] = useState<Tab>('characters');
   const [queue, setQueue] = useState<PendingResource[]>([]);
+  const [importingCount, setImportingCount] = useState(0);
   const queueSeq = useRef(0);
+  const importing = importingCount > 0;
 
   const enqueue = (items: Omit<PendingResource, 'id' | 'checked'>[]): void => {
     if (items.length === 0) {
@@ -175,47 +177,62 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
 
   /** 批量导入音频：读文件 → data URL，进导入队列。 */
   const importAudios = async (files: File[]): Promise<void> => {
-    const items: Omit<PendingResource, 'id' | 'checked'>[] = [];
-    for (const file of files) {
-      const url = await readFileAsDataUrl(file);
-      items.push({ kind: 'audio', name: file.name.replace(/\.[^.]+$/, ''), dataUrl: url });
+    setImportingCount((c) => c + 1);
+    try {
+      const items: Omit<PendingResource, 'id' | 'checked'>[] = [];
+      for (const file of files) {
+        const url = await readFileAsDataUrl(file);
+        items.push({ kind: 'audio', name: file.name.replace(/\.[^.]+$/, ''), dataUrl: url });
+      }
+      enqueue(items);
+    } finally {
+      setImportingCount((c) => c - 1);
     }
-    enqueue(items);
   };
 
   /** 导入普通图片（PNG/JPG 等）：直接作为角色立绘候选。 */
   const importImages = async (files: File[]): Promise<void> => {
-    const items: Omit<PendingResource, 'id' | 'checked'>[] = [];
-    for (const file of files) {
-      const url = await readFileAsDataUrl(file);
-      items.push({ kind: 'character', name: file.name.replace(/\.[^.]+$/, ''), dataUrl: url });
+    setImportingCount((c) => c + 1);
+    try {
+      const items: Omit<PendingResource, 'id' | 'checked'>[] = [];
+      for (const file of files) {
+        const url = await readFileAsDataUrl(file);
+        items.push({ kind: 'character', name: file.name.replace(/\.[^.]+$/, ''), dataUrl: url });
+      }
+      enqueue(items);
+    } finally {
+      setImportingCount((c) => c - 1);
     }
-    enqueue(items);
   };
 
   /** 导入 hzc/nvsg 立绘：解码 → PNG data URL，进导入队列（.bin 归档按条目）。 */
   const importHzc = async (files: File[]): Promise<void> => {
-    const items: Omit<PendingResource, 'id' | 'checked'>[] = [];
-    for (const file of files) {
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      const isBin = file.name.toLowerCase().endsWith('.bin');
-      const entries = isBin
-        ? parseBinArchive(bytes).map((e) => ({ name: e.name, bytes: e.bytes }))
-        : [{ name: file.name, bytes }];
-      for (const item of entries) {
-        try {
-          const img = await decodeHzc1(item.bytes);
-          const url = rgbaToPngDataUrl(img.width, img.height, img.rgba);
-          items.push({ kind: 'character', name: item.name.replace(/\.[^.]+$/, ''), dataUrl: url });
-        } catch (err) {
-          // .bin 归档内允许混有非 hzc 条目，静默跳过；单文件失败则明确提示。
-          if (!isBin) {
-            window.alert(`hzc 解码失败：${err instanceof Error ? err.message : String(err)}`);
+    setImportingCount((c) => c + 1);
+    try {
+      const items: Omit<PendingResource, 'id' | 'checked'>[] = [];
+      for (const file of files) {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const isBin = file.name.toLowerCase().endsWith('.bin');
+        const entries = isBin
+          ? parseBinArchive(bytes).map((e) => ({ name: e.name, bytes: e.bytes }))
+          : [{ name: file.name, bytes }];
+        for (const item of entries) {
+          try {
+            const img = await decodeHzc1(item.bytes);
+            const url = rgbaToPngDataUrl(img.width, img.height, img.rgba);
+            items.push({ kind: 'character', name: item.name.replace(/\.[^.]+$/, ''), dataUrl: url });
+          } catch (err) {
+            // .bin 归档内允许混有非 hzc 条目，静默跳过；单文件失败则明确提示。
+            if (!isBin) {
+              window.alert(`hzc 解码失败：${err instanceof Error ? err.message : String(err)}`);
+            }
           }
         }
       }
+      enqueue(items);
+    } finally {
+      setImportingCount((c) => c - 1);
     }
-    enqueue(items);
   };
 
   /** 一次性提交导入队列（勾选项 → 一次 undo 步）。 */
@@ -287,6 +304,12 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
           }
         }}
       >
+          {importing && (
+            <div className="import-progress" role="status" aria-label="正在导入">
+              <div className="import-progress__bar" />
+              <span className="import-progress__text">正在导入…</span>
+            </div>
+          )}
           {queue.length > 0 && (
             <div className="import-queue">
               <div className="import-queue__head">
@@ -294,10 +317,10 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
                   导入队列（{queue.filter((q) => q.checked).length}/{queue.length}）
                 </span>
                 <div className="import-queue__actions">
-                  <button type="button" className="btn btn--secondary" onClick={() => setQueue([])}>
+                  <button type="button" className="btn btn--secondary" disabled={importing} onClick={() => setQueue([])}>
                     清空
                   </button>
-                  <button type="button" className="btn btn--primary" onClick={commitQueue}>
+                  <button type="button" className="btn btn--primary" disabled={importing} onClick={commitQueue}>
                     确认导入
                   </button>
                 </div>
