@@ -2185,6 +2185,18 @@
   white-space: nowrap;
 }
 
+/* ---------------------------------------------------------------- 属性面板资源引用警告 */
+.pp__warning {
+  padding: 7px 10px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--danger);
+  background: var(--bg-raised);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  overflow-wrap: anywhere;
+}
+
 /* ---------------------------------------------------------------- 预览选项浮层（selset） */
 .preview__choices {
   display: flex;

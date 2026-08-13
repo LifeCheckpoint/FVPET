@@ -12,6 +12,8 @@ import {
   editCharacters,
   emptyState,
   removeCharacter,
+  renameCharacter,
+  renameBackground,
 } from '@hcb-editor/editor';
 
 describe('createProject', () => {
@@ -105,5 +107,29 @@ describe('resource commands', () => {
     expect(next.resources.characters[0]!.image).toBe('data:image/png;base64,x');
     expect(next.resources.characters[1]!.name).toBe('ハル改');
     expect(next.resources.characters[1]!.pose).toBe(2);
+  });
+
+  it('renames a character and cascades to referencing nodes', () => {
+    let state = emptyState();
+    state = applyCommand(state, addCharacter({ name: 'クロ', speakFn: null, pose: 0, costume: 0, face: 0 })).next;
+    const cid = state.resources.characters[0]!.id;
+    state = applyCommand(state, { kind: 'add_node', node: { kind: 'speak', speaker: 'クロ', text: '嗨' }, position: { x: 0, y: 0 } }).next;
+    state = applyCommand(state, { kind: 'add_node', node: { kind: 'bsset', character: 'クロ', pose: 0, costume: 0, expression: 0, layout: 0, position: { x: 0, y: 0 }, layer: 0 }, position: { x: 0, y: 0 } }).next;
+
+    const next = applyCommand(state, renameCharacter(cid, 'クロ改')).next;
+    expect(next.resources.characters[0]!.name).toBe('クロ改');
+    expect(next.document.nodes.find((n) => n.node.kind === 'speak')!.node.speaker).toBe('クロ改');
+    expect(next.document.nodes.find((n) => n.node.kind === 'bsset')!.node.character).toBe('クロ改');
+  });
+
+  it('renames a background and cascades to bgset nodes', () => {
+    let state = emptyState();
+    state = applyCommand(state, addBackground({ name: 'bg_240', variant: 240, bgFn: null })).next;
+    const bid = state.resources.backgrounds[0]!.id;
+    state = applyCommand(state, { kind: 'add_node', node: { kind: 'bgset', background: 'bg_240' }, position: { x: 0, y: 0 } }).next;
+
+    const next = applyCommand(state, renameBackground(bid, '教室')).next;
+    expect(next.resources.backgrounds[0]!.name).toBe('教室');
+    expect(next.document.nodes.find((n) => n.node.kind === 'bgset')!.node.background).toBe('教室');
   });
 });

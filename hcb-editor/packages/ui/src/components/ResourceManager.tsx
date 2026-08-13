@@ -20,6 +20,8 @@ import {
   removeAudio,
   removeBackground,
   removeCg,
+  renameBackground,
+  renameCharacter,
   type AudioResource,
   type BackgroundResource,
   type CharacterPose,
@@ -236,7 +238,7 @@ function CharacterDetail({ r, store, onBack }: {
           <div className="form-grid">
             <label className="form-field">
               <span className="form-field__label">名称</span>
-              <input className="form-field__input" value={r.name} onChange={(e) => store.dispatch(editCharacter(r.id, updateCharacter(r, { name: e.target.value })))} />
+              <input className="form-field__input" value={r.name} onChange={(e) => store.dispatch(renameCharacter(r.id, e.target.value))} />
             </label>
             <label className="form-field">
               <span className="form-field__label">别名</span>
@@ -597,7 +599,7 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
                     {r.image ? <img src={r.thumb ?? r.image} alt={r.name} loading="lazy" decoding="async" /> : <span>{r.name}</span>}
                   </div>
                   <header className="resource-card__head">
-                    <input className="resource-card__name" value={r.name} onChange={(e) => store.dispatch(editBackground(r.id, updateBackground(r, { name: e.target.value })))} />
+                    <input className="resource-card__name" value={r.name} onChange={(e) => store.dispatch(renameBackground(r.id, e.target.value))} />
                     <button type="button" className="resource-card__remove" aria-label="删除背景" onClick={() => store.dispatch(removeBackground(r.id))}>×</button>
                   </header>
                   <label className="resource-card__import">

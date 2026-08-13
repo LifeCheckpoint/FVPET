@@ -37,6 +37,44 @@ function mergeSpeak(
   return next;
 }
 
+/** 对选中节点引用的资源做存在性检查，返回面向用户的警告文案（不阻断编译）。 */
+function resourceRefWarnings(node: IrNode, state: EditorState): string[] {
+  const warnings: string[] = [];
+  const charNames = new Set([
+    ...availableBaseCharacters(state.header.game),
+    ...state.resources.characters.map((c) => c.name),
+  ]);
+  const bgNames = new Set([
+    ...availableBaseBackgrounds(state.header.game),
+    ...state.resources.backgrounds.map((b) => b.name),
+  ]);
+  if (node.kind === 'speak' && node.speaker !== '' && !charNames.has(node.speaker)) {
+    warnings.push(`角色「${node.speaker}」不在底座或资源表中`);
+  }
+  if (node.kind === 'bsset' && node.character !== '' && !charNames.has(node.character)) {
+    warnings.push(`角色「${node.character}」不在底座或资源表中`);
+  }
+  if (node.kind === 'bgset' && node.background !== '' && !bgNames.has(node.background)) {
+    warnings.push(`背景「${node.background}」不在底座或资源表中`);
+  }
+  if (node.kind === 'cgset' && node.name !== '' && !state.resources.cgs.some((c) => c.name.toLowerCase() === node.name.toLowerCase())) {
+    warnings.push(`CG「${node.name}」尚未导入`);
+  }
+  if (node.kind === 'audio' && state.resources.audios.length > 0) {
+    const has = state.resources.audios.some((a) => a.type === node.type && a.number === node.channelOrNum);
+    if (!has) {
+      warnings.push(`音频 ${node.type} #${node.channelOrNum} 尚未导入`);
+    }
+  }
+  if (node.kind === 'speak' && node.voice !== undefined && state.resources.audios.length > 0) {
+    const has = state.resources.audios.some((a) => a.type === 'voice' && a.number === node.voice);
+    if (!has) {
+      warnings.push(`语音 #${node.voice} 尚未导入`);
+    }
+  }
+  return warnings;
+}
+
 export function PropertyPanel({ state, store }: PropertyPanelProps) {
   const baseCharacters = useMemo(() => availableBaseCharacters(state.header.game), [state.header.game]);
   const baseBackgrounds = useMemo(() => availableBaseBackgrounds(state.header.game), [state.header.game]);
@@ -104,6 +142,12 @@ export function PropertyPanel({ state, store }: PropertyPanelProps) {
           )}
         </div>
       </div>
+
+      {resourceRefWarnings(node, state).map((w) => (
+        <div className="pp__warning" key={w}>
+          ⚠ {w}
+        </div>
+      ))}
 
       <datalist id="hcb-speakers">
         {speakerOptions.map((name) => (

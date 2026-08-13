@@ -33,10 +33,12 @@ export type Command =
   | { readonly kind: 'remove_character'; readonly id: string }
   | { readonly kind: 'edit_character'; readonly id: string; readonly character: CharacterResource }
   | { readonly kind: 'edit_characters'; readonly edits: readonly { readonly id: string; readonly character: CharacterResource }[] }
+  | { readonly kind: 'rename_character'; readonly id: string; readonly name: string }
   | { readonly kind: 'add_background'; readonly background: Omit<BackgroundResource, 'id'> }
   | { readonly kind: 'add_backgrounds'; readonly backgrounds: readonly Omit<BackgroundResource, 'id'>[] }
   | { readonly kind: 'remove_background'; readonly id: string }
   | { readonly kind: 'edit_background'; readonly id: string; readonly background: BackgroundResource }
+  | { readonly kind: 'rename_background'; readonly id: string; readonly name: string }
   | { readonly kind: 'add_audio'; readonly audio: Omit<AudioResource, 'id'> }
   | { readonly kind: 'add_audios'; readonly audios: readonly Omit<AudioResource, 'id'>[] }
   | { readonly kind: 'remove_audio'; readonly id: string }
@@ -254,6 +256,22 @@ export function applyCommand(state: EditorState, cmd: Command): ApplyResult {
         }
         break;
       }
+      case 'rename_character': {
+        const c = draft.resources.characters.find((r) => r.id === cmd.id);
+        if (!c) {
+          break;
+        }
+        const oldName = c.name;
+        c.name = cmd.name;
+        for (const n of draft.document.nodes) {
+          if (n.node.kind === 'speak' && n.node.speaker === oldName) {
+            n.node.speaker = cmd.name;
+          } else if (n.node.kind === 'bsset' && n.node.character === oldName) {
+            n.node.character = cmd.name;
+          }
+        }
+        break;
+      }
       case 'add_background': {
         const id = `b${draft.nextId}`;
         draft.resources.backgrounds.push({ id, ...cmd.background });
@@ -279,6 +297,20 @@ export function applyCommand(state: EditorState, cmd: Command): ApplyResult {
         const idx = draft.resources.backgrounds.findIndex((r) => r.id === cmd.id);
         if (idx >= 0) {
           draft.resources.backgrounds[idx] = cmd.background;
+        }
+        break;
+      }
+      case 'rename_background': {
+        const b = draft.resources.backgrounds.find((r) => r.id === cmd.id);
+        if (!b) {
+          break;
+        }
+        const oldName = b.name;
+        b.name = cmd.name;
+        for (const n of draft.document.nodes) {
+          if (n.node.kind === 'bgset' && n.node.background === oldName) {
+            n.node.background = cmd.name;
+          }
         }
         break;
       }
@@ -466,6 +498,10 @@ export function editCharacters(edits: readonly { readonly id: string; readonly c
   return { kind: 'edit_characters', edits };
 }
 
+export function renameCharacter(id: string, name: string): Command {
+  return { kind: 'rename_character', id, name };
+}
+
 export function addBackground(background: Omit<BackgroundResource, 'id'>): Command {
   return { kind: 'add_background', background };
 }
@@ -480,6 +516,10 @@ export function removeBackground(id: string): Command {
 
 export function editBackground(id: string, background: BackgroundResource): Command {
   return { kind: 'edit_background', id, background };
+}
+
+export function renameBackground(id: string, name: string): Command {
+  return { kind: 'rename_background', id, name };
 }
 
 export function addAudio(audio: Omit<AudioResource, 'id'>): Command {
