@@ -1,10 +1,13 @@
 /**
- * Electron 薄壳主进程：仅用于「初步界面了解」——加载 ui 包的 Vite 演示壳。
- * 真实引擎（rfvp-cli + RfvpProcessManager + 真实 Event 回放）在 S4 解冻后接入；
- * 此阶段不引入 preload/contextBridge，渲染层继续走 FakeEngine 兜底。
+ * Electron 主进程：加载 ui 包的 Vite 演示壳，并接入真实引擎桥。
+ * - contextIsolation 开启、nodeIntegration 关闭；preload 仅暴露 window.rfvp。
+ * - rfvp-cli 由 RfvpProcessManager 惰性拉起，IPC 通道见 ipc.ts。
  */
 
+import * as path from 'node:path';
 import { app, BrowserWindow } from 'electron';
+import { registerBaseGameIpc, registerRfvpIpc } from './ipc.js';
+import { RfvpProcessManager } from './rfvp-process-manager.js';
 
 /** 演示壳地址：dev 下由 ui 的 Vite dev server 提供（dev:test 固定 5199）。 */
 const DEV_URL = process.env.HCB_EDITOR_URL ?? 'http://127.0.0.1:5199';
@@ -38,6 +41,7 @@ async function createWindow(): Promise<void> {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
+      preload: path.join(__dirname, 'preload.js'),
     },
   });
 
@@ -45,6 +49,14 @@ async function createWindow(): Promise<void> {
 }
 
 void app.whenReady().then(async () => {
+  const manager = new RfvpProcessManager();
+  registerRfvpIpc(manager);
+  registerBaseGameIpc();
+
+  app.on('will-quit', () => {
+    manager.dispose();
+  });
+
   await createWindow();
 
   app.on('activate', () => {
