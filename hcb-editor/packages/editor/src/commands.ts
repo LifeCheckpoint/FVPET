@@ -22,6 +22,7 @@ export type Command =
   | { readonly kind: 'add_node'; readonly node: IrNode; readonly position: { readonly x: number; readonly y: number } }
   | { readonly kind: 'remove_node'; readonly id: string }
   | { readonly kind: 'move_node'; readonly id: string; readonly position: { readonly x: number; readonly y: number } }
+  | { readonly kind: 'move_nodes'; readonly moves: readonly { readonly id: string; readonly position: { readonly x: number; readonly y: number } }[] }
   | { readonly kind: 'connect'; readonly source: string; readonly target: string; readonly kind2: EdgeKind }
   | { readonly kind: 'reconnect'; readonly source: string; readonly target: string; readonly kind2: EdgeKind }
   | { readonly kind: 'disconnect'; readonly edgeId: string }
@@ -173,6 +174,16 @@ export function applyCommand(state: EditorState, cmd: Command): ApplyResult {
         if (n) {
           n.x = cmd.position.x;
           n.y = cmd.position.y;
+        }
+        break;
+      }
+      case 'move_nodes': {
+        for (const move of cmd.moves) {
+          const n = draft.document.nodes.find((node) => node.id === move.id);
+          if (n) {
+            n.x = move.position.x;
+            n.y = move.position.y;
+          }
         }
         break;
       }
@@ -372,6 +383,10 @@ export function addCommentNode(text: string, position: { readonly x: number; rea
 
 export function moveNode(id: string, position: { readonly x: number; readonly y: number }): Command {
   return { kind: 'move_node', id, position };
+}
+
+export function moveNodes(moves: readonly { readonly id: string; readonly position: { readonly x: number; readonly y: number } }[]): Command {
+  return { kind: 'move_nodes', moves };
 }
 
 export function removeNode(id: string): Command {

@@ -9,6 +9,7 @@ import {
   editSpeakFields,
   emptyState,
   moveNode,
+  moveNodes,
   reconnectNodes,
   validateConnect,
   validateReconnect,
@@ -157,5 +158,21 @@ describe('moveNode', () => {
     const { next } = applyCommand(first, moveNode(id, { x: 42, y: 7 }));
     expect(next.document.nodes.find((n) => n.id === id)!.x).toBe(42);
     expect(next.document.nodes.find((n) => n.id === id)!.y).toBe(7);
+  });
+
+  it('bulk moves multiple nodes in one undo step', () => {
+    const first = applyCommand(emptyState(), addDiaNode('a', { x: 0, y: 0 })).next;
+    const a = first.selection.nodeId!;
+    const second = applyCommand(first, addDiaNode('b', { x: 0, y: 0 })).next;
+    const b = second.selection.nodeId!;
+    const { next } = applyCommand(
+      second,
+      moveNodes([
+        { id: a, position: { x: 10, y: 10 } },
+        { id: b, position: { x: 20, y: 20 } },
+      ]),
+    );
+    expect(next.document.nodes.find((n) => n.id === a)!.x).toBe(10);
+    expect(next.document.nodes.find((n) => n.id === b)!.y).toBe(20);
   });
 });

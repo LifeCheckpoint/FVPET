@@ -6,7 +6,7 @@
  * - 点击节点同步 store 选中态；Backspace/Delete 删除节点（START 节点 deletable=false）。
  */
 
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import {
   ReactFlow,
   Background,
@@ -31,10 +31,12 @@ import {
   connectNodes,
   disconnectEdge,
   moveNode,
+  moveNodes,
   selectNode,
   type DocEdge,
   type DocNode,
   type EdgeKind,
+  type EditorDocument,
   type EditorState,
   type EditorStore,
 } from '@hcb-editor/editor';
@@ -160,6 +162,57 @@ function findQuickConnectTarget(state: EditorState, nodeId: string): string | nu
   return best;
 }
 
+/** 分层自动布局：从 START 沿所有边做 BFS 定深度，同层纵向排列，不可达节点排在末尾。 */
+function computeAutoLayout(document: EditorDocument): ReadonlyMap<string, { readonly x: number; readonly y: number }> {
+  const adj = new Map<string, string[]>();
+  for (const e of document.edges) {
+    const list = adj.get(e.source);
+    if (list) {
+      list.push(e.target);
+    } else {
+      adj.set(e.source, [e.target]);
+    }
+  }
+  const depth = new Map<string, number>();
+  depth.set(document.startNodeId, 0);
+  const queue: string[] = [document.startNodeId];
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    for (const t of adj.get(id) ?? []) {
+      if (!depth.has(t)) {
+        depth.set(t, (depth.get(id) ?? 0) + 1);
+        queue.push(t);
+      }
+    }
+  }
+  let maxDepth = 0;
+  for (const d of depth.values()) {
+    maxDepth = Math.max(maxDepth, d);
+  }
+  for (const n of document.nodes) {
+    if (!depth.has(n.id)) {
+      depth.set(n.id, maxDepth + 1);
+    }
+  }
+  const columns = new Map<number, string[]>();
+  for (const n of document.nodes) {
+    const d = depth.get(n.id) ?? 0;
+    const list = columns.get(d);
+    if (list) {
+      list.push(n.id);
+    } else {
+      columns.set(d, [n.id]);
+    }
+  }
+  const result = new Map<string, { readonly x: number; readonly y: number }>();
+  for (const [d, ids] of columns) {
+    ids.forEach((id, i) => {
+      result.set(id, { x: 80 + d * 240, y: 80 + i * 110 });
+    });
+  }
+  return result;
+}
+
 function EditorFlowNode(props: NodeProps<EditorNode>) {
   const { docNode, isStart } = props.data;
   const kind = docNode.node.kind;
@@ -188,6 +241,7 @@ const nodeTypes = { editor: EditorFlowNode };
 export interface FlowCanvasHandle {
   readonly add: (kind: CreatableNodeKind) => void;
   readonly locate: (nodeId: string) => void;
+  readonly layout: () => void;
 }
 
 export interface FlowCanvasProps {
@@ -203,11 +257,24 @@ export const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function
   const [nodes, setNodes] = useState<EditorNode[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
+  const clipboardRef = useRef<IrNode | null>(null);
 
   useEffect(() => {
     setNodes(state.document.nodes.map((n) => toNode(n, n.id === state.selection.nodeId, state.document.startNodeId)));
     setEdges(state.document.edges.map(toEdge));
   }, [state]);
+  const applyLayout = useCallback(() => {
+    const positions = computeAutoLayout(state.document);
+    const moves = state.document.nodes
+      .map((n) => ({ id: n.id, position: positions.get(n.id) ?? { x: n.x, y: n.y } }))
+      .filter((m, i) => {
+        const src = state.document.nodes[i]!;
+        return src.x !== m.position.x || src.y !== m.position.y;
+      });
+    if (moves.length > 0) {
+      store.dispatch(moveNodes(moves));
+    }
+  }, [state.document, store]);
 
   useImperativeHandle(
     ref,
@@ -223,8 +290,11 @@ export const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function
         }
         store.dispatch(selectNode(nodeId));
       },
+      layout() {
+        applyLayout();
+      },
     }),
-    [getNode, screenToFlowPosition, setCenter, store],
+    [applyLayout, getNode, screenToFlowPosition, setCenter, store],
   );
 
   const onNodesChange = useCallback((changes: NodeChange<EditorNode>[]) => {
@@ -344,6 +414,36 @@ export const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function
     [store],
   );
 
+  // 复制 / 粘贴快捷键：在画布聚焦时（输入框/文本框除外）生效。
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName ?? '';
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) {
+        return;
+      }
+      if (!(event.ctrlKey || event.metaKey)) {
+        return;
+      }
+      const key = event.key.toLowerCase();
+      if (key === 'c') {
+        const selectedId = state.selection.nodeId;
+        const src = selectedId ? state.document.nodes.find((n) => n.id === selectedId) : undefined;
+        if (src) {
+          clipboardRef.current = cloneIrNodeForCopy(src.node);
+        }
+      } else if (key === 'v') {
+        const node = clipboardRef.current;
+        if (node) {
+          const center = screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+          store.dispatch(addNode(cloneIrNodeForCopy(node), { x: center.x, y: center.y }));
+        }
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [screenToFlowPosition, state.document.nodes, state.selection.nodeId, store]);
+
   return (
     <div className="flow">
       <ReactFlow
@@ -369,6 +469,15 @@ export const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function
         <Controls showInteractive={false} />
         <MiniMap pannable zoomable className="flow__minimap" />
       </ReactFlow>
+
+      <button
+        type="button"
+        className="flow__layout-btn"
+        title="整理布局：按控制流分层排列可达节点"
+        onClick={applyLayout}
+      >
+        整理布局
+      </button>
 
       {menu && (
         <>
