@@ -59,6 +59,22 @@ const fileDialogApi = {
     ipcRenderer.invoke('file-dialog:open-text'),
 };
 
+interface ProjectDirAsset {
+  readonly path: string;
+  readonly bytes: Uint8Array;
+}
+
+const projectDirApi = {
+  save: (
+    defaultName: string,
+    projectJson: string,
+    assets: ProjectDirAsset[],
+  ): Promise<string | null> => ipcRenderer.invoke('project-dir:save', { defaultName, projectJson, assets }),
+  open: (): Promise<{ projectJson: string; assets: ProjectDirAsset[] } | null> =>
+    ipcRenderer.invoke('project-dir:open'),
+};
+
 contextBridge.exposeInMainWorld('rfvp', rfvpApi);
 contextBridge.exposeInMainWorld('baseGame', baseGameApi);
 contextBridge.exposeInMainWorld('fileDialog', fileDialogApi);
+contextBridge.exposeInMainWorld('projectDir', projectDirApi);

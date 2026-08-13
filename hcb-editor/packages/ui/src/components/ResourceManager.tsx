@@ -133,6 +133,21 @@ export interface ResourceManagerProps {
 export function ResourceManager({ state, store, onClose }: ResourceManagerProps) {
   const [tab, setTab] = useState<Tab>('characters');
 
+  /** 批量导入音频：逐个读文件 → data URL，并按类型自动分配编号（自增）。 */
+  const importAudios = async (files: File[]): Promise<void> => {
+    const maxByType = new Map<string, number>();
+    for (const a of state.resources.audios) {
+      maxByType.set(a.type, Math.max(maxByType.get(a.type) ?? 0, a.number));
+    }
+    for (const file of files) {
+      const url = await readFileAsDataUrl(file);
+      const type: AudioResource['type'] = 'bgm';
+      const next = (maxByType.get(type) ?? 0) + 1;
+      maxByType.set(type, next);
+      store.dispatch(addAudio({ type, number: next, label: file.name.replace(/\.[^.]+$/, ''), src: url }));
+    }
+  };
+
   return (
     <div className="workspace">
       <header className="workspace__header">
@@ -393,9 +408,25 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
             </button>
           )}
           {tab === 'audios' && (
-            <button type="button" className="btn btn--secondary" onClick={() => store.dispatch(addAudio({ type: 'bgm', number: 0, label: '' }))}>
-              + 添加音频
-            </button>
+            <>
+              <button type="button" className="btn btn--secondary" onClick={() => store.dispatch(addAudio({ type: 'bgm', number: 0, label: '' }))}>
+                + 添加音频
+              </button>
+              <label className="btn btn--secondary">
+                批量导入音频
+                <input
+                  type="file"
+                  accept="audio/*"
+                  multiple
+                  hidden
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files ?? []);
+                    void importAudios(files);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+            </>
           )}
         </footer>
     </div>

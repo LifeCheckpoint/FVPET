@@ -6,7 +6,7 @@
 
 import * as path from 'node:path';
 import { app, BrowserWindow } from 'electron';
-import { registerBaseGameIpc, registerFileDialogIpc, registerRfvpIpc } from './ipc.js';
+import { registerBaseGameIpc, registerFileDialogIpc, registerProjectDirIpc, registerRfvpIpc } from './ipc.js';
 import { RfvpProcessManager } from './rfvp-process-manager.js';
 
 /** 演示壳地址：dev 下由 ui 的 Vite dev server 提供（dev:test 固定 5199）。 */
@@ -53,6 +53,7 @@ void app.whenReady().then(async () => {
   registerRfvpIpc(manager);
   registerBaseGameIpc();
   registerFileDialogIpc();
+  registerProjectDirIpc();
 
   app.on('will-quit', () => {
     manager.dispose();

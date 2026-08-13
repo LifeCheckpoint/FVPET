@@ -23,6 +23,77 @@ function defaultBaseHcbPath(gameId: string): string {
   );
 }
 
+export interface ProjectDirAsset {
+  readonly path: string;
+  readonly bytes: Uint8Array;
+}
+
+/** 工程目录桥：工程 = project.json + assets/ 目录，资源文件落盘。 */
+export function registerProjectDirIpc(): void {
+  ipcMain.handle(
+    'project-dir:save',
+    async (
+      _event,
+      payload: { defaultName: string; projectJson: string; assets: ProjectDirAsset[] },
+    ): Promise<string | null> => {
+      const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+      const result = win
+        ? await dialog.showSaveDialog(win, { defaultPath: payload.defaultName })
+        : { canceled: true, filePath: undefined };
+      if (result.canceled || !result.filePath) {
+        return null;
+      }
+      const dir = result.filePath;
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'project.json'), payload.projectJson, 'utf8');
+      for (const asset of payload.assets) {
+        const assetPath = path.join(dir, asset.path);
+        fs.mkdirSync(path.dirname(assetPath), { recursive: true });
+        fs.writeFileSync(assetPath, new Uint8Array(asset.bytes));
+      }
+      return dir;
+    },
+  );
+
+  ipcMain.handle(
+    'project-dir:open',
+    async (): Promise<{ projectJson: string; assets: ProjectDirAsset[] } | null> => {
+      const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+      const result = win
+        ? await dialog.showOpenDialog(win, { properties: ['openDirectory'] })
+        : { canceled: true, filePaths: [] };
+      const dir = result.filePaths?.[0];
+      if (result.canceled || !dir) {
+        return null;
+      }
+      const projectPath = path.join(dir, 'project.json');
+      if (!fs.existsSync(projectPath)) {
+        return null;
+      }
+      const projectJson = fs.readFileSync(projectPath, 'utf8');
+      const assetsDir = path.join(dir, 'assets');
+      const assets: ProjectDirAsset[] = [];
+      if (fs.existsSync(assetsDir)) {
+        const walk = (base: string): void => {
+          for (const entry of fs.readdirSync(base, { withFileTypes: true })) {
+            const full = path.join(base, entry.name);
+            if (entry.isDirectory()) {
+              walk(full);
+            } else {
+              assets.push({
+                path: path.relative(dir, full).split(path.sep).join('/'),
+                bytes: new Uint8Array(fs.readFileSync(full)),
+              });
+            }
+          }
+        };
+        walk(assetsDir);
+      }
+      return { projectJson, assets };
+    },
+  );
+}
+
 /** 原生文件对话框桥：保存/打开工程与导出 .hcb。 */
 export function registerFileDialogIpc(): void {
   ipcMain.handle(

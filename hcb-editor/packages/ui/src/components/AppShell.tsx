@@ -5,8 +5,9 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
-import { deserializeProject, serializeProject } from '@hcb-editor/editor';
-import { openTextFile, saveBinaryFile, saveTextFile } from '../fileDialog.js';
+import { deserializeProject } from '@hcb-editor/editor';
+import { saveBinaryFile } from '../fileDialog.js';
+import { openProjectDir, saveProjectDir } from '../projectDir.js';
 import { loadBaseBinary } from '../preview/baseBinary.js';
 import { compileEditorState } from '../preview/compileFromState.js';
 import { useEditorStore } from '../store/useEditorStore.js';
@@ -59,7 +60,7 @@ export function AppShell() {
     flowRef.current?.locate(nodeId);
   };
 const saveProject = () => {
-  void saveTextFile('project.hcbproj.json', serializeProject(state)).then((savedPath) => {
+  void saveProjectDir(state).then((savedPath) => {
     if (savedPath) {
       store.markSaved();
     }
@@ -73,9 +74,9 @@ const openProject = (file: File) => {
 };
 
 const openProjectDialog = () => {
-  void openTextFile().then((picked) => {
-    if (picked) {
-      store.load(deserializeProject(picked.text));
+  void openProjectDir().then((loaded) => {
+    if (loaded) {
+      store.load(loaded);
     } else {
       fileInputRef.current?.click();
     }
