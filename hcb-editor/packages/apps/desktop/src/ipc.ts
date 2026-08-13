@@ -5,7 +5,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { BrowserWindow, ipcMain } from 'electron';
+import { BrowserWindow, dialog, ipcMain } from 'electron';
 import type { RfvpLoadResult, RfvpProcessManager } from './rfvp-process-manager.js';
 
 /** 底座游戏 id → 原版 HCB 文件名（默认 auto-discovery 用）。 */
@@ -21,6 +21,54 @@ function defaultBaseHcbPath(gameId: string): string {
     '..', '..', '..', '..', '..',
     '.reference_repo', 'fvpanalysis', 'hcbtool_test', file,
   );
+}
+
+/** 原生文件对话框桥：保存/打开工程与导出 .hcb。 */
+export function registerFileDialogIpc(): void {
+  ipcMain.handle(
+    'file-dialog:save-text',
+    async (_event, payload: { defaultName: string; content: string }): Promise<string | null> => {
+      const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+      const result = win
+        ? await dialog.showSaveDialog(win, { defaultPath: payload.defaultName })
+        : { canceled: true, filePath: undefined };
+      if (result.canceled || !result.filePath) {
+        return null;
+      }
+      fs.writeFileSync(result.filePath, payload.content, 'utf8');
+      return result.filePath;
+    },
+  );
+
+  ipcMain.handle(
+    'file-dialog:save-binary',
+    async (_event, payload: { defaultName: string; content: Uint8Array }): Promise<string | null> => {
+      const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+      const result = win
+        ? await dialog.showSaveDialog(win, { defaultPath: payload.defaultName })
+        : { canceled: true, filePath: undefined };
+      if (result.canceled || !result.filePath) {
+        return null;
+      }
+      fs.writeFileSync(result.filePath, new Uint8Array(payload.content));
+      return result.filePath;
+    },
+  );
+
+  ipcMain.handle('file-dialog:open-text', async (): Promise<{ name: string; text: string } | null> => {
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+    const result = win
+      ? await dialog.showOpenDialog(win, {
+          properties: ['openFile'],
+          filters: [{ name: '工程文件', extensions: ['json', 'hcbproj.json'] }],
+        })
+      : { canceled: true, filePaths: [] };
+    const filePath = result.filePaths?.[0];
+    if (result.canceled || !filePath) {
+      return null;
+    }
+    return { name: path.basename(filePath), text: fs.readFileSync(filePath, 'utf8') };
+  });
 }
 
 /** 底座游戏二进制读取桥：Electron 主进程读本地文件，供渲染层 compileWithBase 用。 */

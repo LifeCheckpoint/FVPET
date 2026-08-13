@@ -46,5 +46,15 @@ const baseGameApi = {
     ipcRenderer.invoke('base-game:read', { gameId, path }),
 };
 
+const fileDialogApi = {
+  saveTextFile: (defaultName: string, content: string): Promise<string | null> =>
+    ipcRenderer.invoke('file-dialog:save-text', { defaultName, content }),
+  saveBinaryFile: (defaultName: string, content: Uint8Array): Promise<string | null> =>
+    ipcRenderer.invoke('file-dialog:save-binary', { defaultName, content }),
+  openTextFile: (): Promise<{ name: string; text: string } | null> =>
+    ipcRenderer.invoke('file-dialog:open-text'),
+};
+
 contextBridge.exposeInMainWorld('rfvp', rfvpApi);
 contextBridge.exposeInMainWorld('baseGame', baseGameApi);
+contextBridge.exposeInMainWorld('fileDialog', fileDialogApi);
