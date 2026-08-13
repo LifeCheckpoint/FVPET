@@ -52,7 +52,7 @@ export function buildPreviewScript(
   resources?: ProjectResources,
 ): FakeScript {
   const ir = projectToIr(document, header);
-  const texts: { readonly text: string; readonly speaker?: string; readonly audioSrc?: string }[] = [];
+  const texts: { readonly text: string; readonly speaker?: string; readonly audioSrc?: string; readonly choices?: readonly string[] }[] = [];
   const prims: FakePrim[] = [];
   let primId = 0;
 
