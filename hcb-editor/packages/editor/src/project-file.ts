@@ -22,6 +22,8 @@ const CharacterResourceSchema = z.object({
   name: z.string(),
   alias: z.string().optional(),
   speakFn: z.number().nullable(),
+  builtin: z.boolean().optional(),
+  chaNum: z.number().optional(),
   pose: z.number(),
   costume: z.number(),
   face: z.number(),
@@ -121,6 +123,8 @@ export function deserializeProject(text: string): EditorState {
       costume: number;
       face: number;
       alias?: string;
+      builtin?: boolean;
+      chaNum?: number;
       image?: string;
       poses?: { pose: number; costume: number; face: number; image: string }[];
     } = {
@@ -133,6 +137,12 @@ export function deserializeProject(text: string): EditorState {
     };
     if (c.alias !== undefined) {
       r.alias = c.alias;
+    }
+    if (c.builtin !== undefined) {
+      r.builtin = c.builtin;
+    }
+    if (c.chaNum !== undefined) {
+      r.chaNum = c.chaNum;
     }
     if (c.image !== undefined) {
       r.image = c.image;

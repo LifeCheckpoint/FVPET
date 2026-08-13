@@ -19,6 +19,10 @@ export interface CharacterResource {
   readonly alias?: string;
   /** 底座游戏已有 SPEAK 函数地址；新增资源为 null（编译期自动分配）。 */
   readonly speakFn: number | null;
+  /** 内置标记：底座预置角色（speakFn 锁定，可补立绘，不可作为自定义角色重新生成）。 */
+  readonly builtin?: boolean;
+  /** 立绘编号（真实引擎 bsset 的 chaNum）；底座数据暂缺，用户可手填。 */
+  readonly chaNum?: number;
   readonly pose: number;
   readonly costume: number;
   readonly face: number;
