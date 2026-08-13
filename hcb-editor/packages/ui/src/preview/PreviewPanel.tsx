@@ -17,7 +17,7 @@ import type { EditorState } from '@hcb-editor/editor';
 import type { FakePrim, FakeScript, RfvpEvent } from '@hcb-editor/rfvp';
 import { buildPreviewScript } from './buildPreviewScript.js';
 import { loadBaseBinary } from './baseBinary.js';
-import { compileEditorState } from './compileFromState.js';
+import { compileEditorStateDetailed } from './compileFromState.js';
 import { RfvpClient } from './RfvpClient.js';
 import type { PreviewRatio } from '../preferences/preferences.js';
 
@@ -129,6 +129,7 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
     clientRef.current!.supported ? 'real' : 'fake',
   );
   const [engineError, setEngineError] = useState<string | null>(null);
+  const [audioHint, setAudioHint] = useState<string | null>(null);
 
   const [width, height] = ratio === '16:9' ? [640, 360] : [640, 480];
 
@@ -148,6 +149,11 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
           break;
         case 'g':
           setGlobals((prev) => ({ ...prev, [ev.index]: ev.value }));
+          break;
+        case 'audio':
+          setAudioHint(
+            `${ev.action === 'play' ? '播放' : ev.action === 'stop' ? '停止' : '加载'}音频 slot ${ev.channel}`,
+          );
           break;
         case 'prims': {
           if (!engineReadyRef.current) {
@@ -247,6 +253,7 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
     setDone(false);
     setGlobals({});
     setEngineError(null);
+    setAudioHint(null);
 
     const app = appRef.current;
     const Graphics = graphicsRef.current;
@@ -276,8 +283,8 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
       setEngineMode('real');
       void loadBaseBinary(state.header.game)
         .then((baseData) => {
-          const bytes = compileEditorState(state, baseData);
-          return client.load(bytes, state.header.nls);
+          const { bytes, labels } = compileEditorStateDetailed(state, baseData);
+          return client.load(bytes, state.header.nls, labels);
         })
         .then(() => {
           engineReadyRef.current = true;
@@ -334,6 +341,7 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
       </div>
       <div className="preview__textbox">
         {done ? '（完）' : text ?? ''}
+        {audioHint && <span className="preview__audio-hint">{audioHint}</span>}
       </div>
       <div className="preview__labels">
         <div className="preview__globals-title">label 断点</div>
@@ -341,7 +349,17 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
           <div className="preview__globals-empty">无</div>
         ) : (
           labels.map((n) => (
-            <button type="button" className="preview__label" key={n.id} onClick={() => onLocate?.(n.id)}>
+            <button
+              type="button"
+              className="preview__label"
+              key={n.id}
+              onClick={() => {
+                onLocate?.(n.id);
+                if (clientRef.current?.supported && engineReadyRef.current && n.node.kind === 'label') {
+                  void clientRef.current.jump(n.node.name);
+                }
+              }}
+            >
               {n.node.kind === 'label' ? n.node.name : n.id}
             </button>
           ))

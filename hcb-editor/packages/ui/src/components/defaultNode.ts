@@ -12,9 +12,11 @@ import {
   diaNode,
   jumpNode,
   labelNode,
+  msgsetNode,
   selsetNode,
   speakNode,
   threadNode,
+  waitNode,
 } from '@hcb-editor/editor';
 import type { CreatableNodeKind } from '../theme/meta.js';
 
@@ -40,6 +42,10 @@ export function defaultNode(kind: CreatableNodeKind): IrNode {
       return threadNode(0, '');
     case 'jump':
       return jumpNode('');
+    case 'wait':
+      return waitNode(1000);
+    case 'msgset':
+      return msgsetNode('normal');
     case 'comment':
       return commentNode('');
   }

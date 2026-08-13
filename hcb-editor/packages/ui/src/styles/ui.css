@@ -27,6 +27,11 @@
   letter-spacing: 0.01em;
 }
 
+.app__dirty {
+  color: var(--accent, #d97706);
+  font-weight: 700;
+}
+
 .app__topbar-actions {
   display: flex;
   gap: 6px;
@@ -921,6 +926,18 @@
   white-space: pre-wrap;
 }
 
+.preview__audio-hint {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  line-height: 16px;
+  color: var(--text-faint);
+  background: var(--accent-muted, rgba(217, 119, 6, 0.12));
+  vertical-align: 2px;
+}
+
 .preview__globals {
   flex: 1;
   min-height: 0;
@@ -1097,6 +1114,18 @@
 .timeline__kind {
   font-size: 10.5px;
   color: var(--text-faint);
+}
+
+.timeline__branch {
+  display: inline-block;
+  align-self: flex-start;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  line-height: 15px;
+  color: var(--accent, #d97706);
+  background: var(--accent-muted, rgba(217, 119, 6, 0.12));
 }
 
 .timeline__text {

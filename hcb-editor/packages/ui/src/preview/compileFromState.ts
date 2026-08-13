@@ -6,11 +6,21 @@
  * - baseData 提供时走 compileWithBase → 可独立运行；为 null 时退化为脚本-only 产物。
  */
 
-import { compileProject, type CompileProjectOptions } from '@hcb-editor/compiler';
+import { compileProjectDetailed, type CompileProjectOptions } from '@hcb-editor/compiler';
 import { projectToIr, type EditorState } from '@hcb-editor/editor';
 import { formatIssues, validateIr } from '@hcb-editor/hcb/validate';
 
+export interface CompiledEditorOutput {
+  readonly bytes: Uint8Array;
+  /** label → 绝对代码地址（供真实引擎 label 断点 jump）。 */
+  readonly labels: Readonly<Record<string, number>>;
+}
+
 export function compileEditorState(state: EditorState, baseData: Uint8Array | null): Uint8Array {
+  return compileEditorStateDetailed(state, baseData).bytes;
+}
+
+export function compileEditorStateDetailed(state: EditorState, baseData: Uint8Array | null): CompiledEditorOutput {
   const ir = projectToIr(state.document, state.header);
   const issues = validateIr(ir);
   if (issues.length > 0) {
@@ -27,5 +37,6 @@ export function compileEditorState(state: EditorState, baseData: Uint8Array | nu
   if (baseData) {
     opts.baseData = baseData;
   }
-  return compileProject(ir, state.header.nls, opts);
+  const result = compileProjectDetailed(ir, state.header.nls, opts);
+  return { bytes: result.bytes, labels: Object.fromEntries(result.labels) };
 }

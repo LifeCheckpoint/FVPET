@@ -58,7 +58,11 @@ export function AppShell() {
     flowRef.current?.locate(nodeId);
   };
 const saveProject = () => {
-  void saveTextFile('project.hcbproj.json', serializeProject(state));
+  void saveTextFile('project.hcbproj.json', serializeProject(state)).then((savedPath) => {
+    if (savedPath) {
+      store.markSaved();
+    }
+  });
 };
 
 const openProject = (file: File) => {
@@ -97,7 +101,10 @@ const exportHcb = () => {
   return (
     <div className="app">
       <header className="app__topbar">
-        <span className="app__brand">FVP 剧情编辑器</span>
+        <span className="app__brand">
+          FVP 剧情编辑器
+          {store.isDirty && <span className="app__dirty" title="有未保存的改动"> *</span>}
+        </span>
         <div className="app__topbar-actions">
           <button type="button" className="topbar-btn" disabled={!store.canUndo} onClick={() => store.undo()}>
             撤销

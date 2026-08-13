@@ -32,13 +32,15 @@ export function TimelineView({ document, activeNodeId, onLocate }: TimelineViewP
         return (
           <button
             type="button"
-            key={item.nodeId}
+            key={`${item.nodeId}-${i}`}
             className={`timeline__item${item.nodeId === activeNodeId ? ' timeline__item--active' : ''}`}
+            style={{ paddingLeft: 8 + item.depth * 16 }}
             onClick={() => onLocate(item.nodeId)}
           >
             <span className="timeline__index">{i + 1}</span>
             <span className="timeline__body">
               <span className="timeline__kind">{nodeKindLabel(item.kind)}</span>
+              {item.branchLabel && <span className="timeline__branch">{item.branchLabel}</span>}
               <span className="timeline__text">{summary.primary || summary.secondary}</span>
             </span>
           </button>

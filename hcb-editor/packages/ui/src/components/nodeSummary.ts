@@ -45,6 +45,10 @@ export function summarizeNode(node: IrNode): NodeSummary {
       return { primary: `slot ${node.slot}`, secondary: nodeKindLabel('thread') };
     case 'jump':
       return { primary: node.target || '？', secondary: nodeKindLabel('jump') };
+    case 'wait':
+      return { primary: `${node.ms} ms`, secondary: nodeKindLabel('wait') };
+    case 'msgset':
+      return { primary: node.position, secondary: nodeKindLabel('msgset') };
     case 'raw':
       return { primary: `${node.bytes.byteLength} 字节`, secondary: nodeKindLabel('raw') };
     case 'comment':

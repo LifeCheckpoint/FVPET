@@ -316,6 +316,29 @@ export function PropertyPanel({ state, store }: PropertyPanelProps) {
         </div>
       )}
 
+      {node.kind === 'wait' && (
+        <label className="pp__field">
+          <span className="pp__label">等待时长（毫秒）</span>
+          <input className="pp__input" type="number" value={node.ms} onChange={(e) => edit({ ...node, ms: Number(e.target.value) })} />
+        </label>
+      )}
+
+      {node.kind === 'msgset' && (
+        <label className="pp__field">
+          <span className="pp__label">对话栏位置</span>
+          <select
+            className="pp__input"
+            value={node.position}
+            onChange={(e) => edit({ ...node, position: e.target.value as typeof node.position })}
+          >
+            <option value="middle">middle（居中）</option>
+            <option value="normal">normal（恢复显示）</option>
+            <option value="boxin">boxin（框入）</option>
+            <option value="boxout">boxout（框出）</option>
+          </select>
+        </label>
+      )}
+
       {node.kind === 'raw' && (
         <div className="pp__field">
           <span className="pp__label">未识别演出块</span>

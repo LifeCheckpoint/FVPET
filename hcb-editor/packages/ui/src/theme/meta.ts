@@ -22,6 +22,8 @@ export const NODE_KIND_META: readonly NodeKindMeta[] = [
   { kind: 'bsset', label: '立绘', hint: '角色立绘站位' },
   { kind: 'selset', label: '选项', hint: '分支选项' },
   { kind: 'audio', label: '音频', hint: 'BGM / 语音 / 音效' },
+  { kind: 'wait', label: '等待', hint: '等待指定毫秒' },
+  { kind: 'msgset', label: '对话栏', hint: '设置对话框位置' },
   { kind: 'branch', label: '分支', hint: '条件跳转' },
   { kind: 'thread', label: '线程', hint: '启动并行线程' },
   { kind: 'jump', label: '跳转', hint: '无条件跳转到标签' },

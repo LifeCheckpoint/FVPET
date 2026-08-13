@@ -18,11 +18,15 @@ export class RfvpClient {
     this.supported = this.bridge !== null;
   }
 
-  load(bytes: Uint8Array, nls: string): Promise<RfvpLoadResult | null> {
+  load(bytes: Uint8Array, nls: string, labels?: Readonly<Record<string, number>>): Promise<RfvpLoadResult | null> {
     if (!this.bridge) {
       return Promise.resolve(null);
     }
-    return this.bridge.load(bytes, nls);
+    return this.bridge.load(bytes, nls, labels);
+  }
+
+  jump(label: string): Promise<void> {
+    return this.bridge ? this.bridge.jump(label) : Promise.resolve();
   }
 
   advance(): Promise<void> {
