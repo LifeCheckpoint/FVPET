@@ -594,7 +594,7 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
               {state.resources.backgrounds.map((r) => (
                 <article className="resource-card" key={r.id}>
                   <div className="resource-card__thumb">
-                    {r.image ? <img src={r.image} alt={r.name} /> : <span>{r.name}</span>}
+                    {r.image ? <img src={r.thumb ?? r.image} alt={r.name} loading="lazy" decoding="async" /> : <span>{r.name}</span>}
                   </div>
                   <header className="resource-card__head">
                     <input className="resource-card__name" value={r.name} onChange={(e) => store.dispatch(editBackground(r.id, updateBackground(r, { name: e.target.value })))} />
@@ -638,7 +638,7 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
               {state.resources.cgs.map((r) => (
                 <article className="resource-card" key={r.id}>
                   <div className="resource-card__thumb">
-                    {r.image ? <img src={r.image} alt={r.name} /> : <span>{r.name}</span>}
+                    {r.image ? <img src={r.thumb ?? r.image} alt={r.name} loading="lazy" decoding="async" /> : <span>{r.name}</span>}
                   </div>
                   <header className="resource-card__head">
                     <span className="resource-card__name">{r.name}</span>

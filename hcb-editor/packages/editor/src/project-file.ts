@@ -48,6 +48,7 @@ const BackgroundResourceSchema = z.object({
   variant: z.number(),
   bgFn: z.number().nullable(),
   image: z.string().optional(),
+  thumb: z.string().optional(),
 });
 
 const AudioResourceSchema = z.object({
@@ -62,6 +63,7 @@ const CgResourceSchema = z.object({
   id: z.string(),
   name: z.string(),
   image: z.string(),
+  thumb: z.string().optional(),
 });
 
 const DocNodeJson = z.object({
@@ -207,7 +209,7 @@ export function deserializeProject(text: string): EditorState {
     return r;
   });
   const backgrounds = parsed.resources.backgrounds.map((b) => {
-    const r: { id: string; name: string; variant: number; bgFn: number | null; image?: string } = {
+    const r: { id: string; name: string; variant: number; bgFn: number | null; image?: string; thumb?: string } = {
       id: b.id,
       name: b.name,
       variant: b.variant,
@@ -215,6 +217,9 @@ export function deserializeProject(text: string): EditorState {
     };
     if (b.image !== undefined) {
       r.image = b.image;
+    }
+    if (b.thumb !== undefined) {
+      r.thumb = b.thumb;
     }
     return r;
   });
@@ -230,11 +235,17 @@ export function deserializeProject(text: string): EditorState {
     }
     return r;
   });
-  const cgs = parsed.resources.cgs.map((c) => ({
-    id: c.id,
-    name: c.name,
-    image: c.image,
-  }));
+  const cgs = parsed.resources.cgs.map((c) => {
+    const r: { id: string; name: string; image: string; thumb?: string } = {
+      id: c.id,
+      name: c.name,
+      image: c.image,
+    };
+    if (c.thumb !== undefined) {
+      r.thumb = c.thumb;
+    }
+    return r;
+  });
   return {
     header: parsed.header,
     document: { nodes, edges: parsed.document.edges, startNodeId: parsed.document.startNodeId },

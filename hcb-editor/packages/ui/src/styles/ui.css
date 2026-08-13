@@ -1247,6 +1247,9 @@
   background: var(--bg-raised);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
+  /* 大量资源卡片时跳过视口外渲染，缓解导入后卡顿。 */
+  content-visibility: auto;
+  contain-intrinsic-size: 220px;
 }
 
 .resource-card__head {

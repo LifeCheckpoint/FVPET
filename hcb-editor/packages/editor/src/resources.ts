@@ -57,8 +57,10 @@ export interface BackgroundResource {
   readonly variant: number;
   /** 底座游戏背景函数地址；新增资源为 null。 */
   readonly bgFn: number | null;
-  /** 背景图片 data URL。 */
+  /** 背景图片 data URL（预览用全图）。 */
   readonly image?: string;
+  /** 背景缩略图 data URL（列表展示用，256px 平滑降采样，降低大量图片渲染卡顿）。 */
+  readonly thumb?: string;
 }
 
 /**
@@ -71,6 +73,8 @@ export interface CgResource {
   readonly name: string;
   /** CG 图片 data URL（全屏预览）。 */
   readonly image: string;
+  /** CG 缩略图 data URL（列表展示用，256px 平滑降采样）。 */
+  readonly thumb?: string;
 }
 
 export interface AudioResource {

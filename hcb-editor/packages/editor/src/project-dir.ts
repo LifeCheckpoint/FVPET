@@ -115,9 +115,13 @@ export function serializeProjectToDir(state: EditorState): ProjectDirData {
       }),
       backgrounds: state.resources.backgrounds.map((b) => {
         const image = externalize(b.image);
-        return { ...b, ...(image !== undefined ? { image } : {}) };
+        const thumb = externalize(b.thumb);
+        return { ...b, ...(image !== undefined ? { image } : {}), ...(thumb !== undefined ? { thumb } : {}) };
       }),
-      cgs: state.resources.cgs.map((c) => ({ ...c, image: externalize(c.image) ?? c.image })),
+      cgs: state.resources.cgs.map((c) => {
+        const thumb = externalize(c.thumb);
+        return { ...c, image: externalize(c.image) ?? c.image, ...(thumb !== undefined ? { thumb } : {}) };
+      }),
       audios: state.resources.audios.map((a) => {
         const src = externalize(a.src);
         return { ...a, ...(src !== undefined ? { src } : {}) };
@@ -168,9 +172,13 @@ export function deserializeProjectFromDir(
       }),
       backgrounds: state.resources.backgrounds.map((b) => {
         const image = inline(b.image);
-        return { ...b, ...(image !== undefined ? { image } : {}) };
+        const thumb = inline(b.thumb);
+        return { ...b, ...(image !== undefined ? { image } : {}), ...(thumb !== undefined ? { thumb } : {}) };
       }),
-      cgs: state.resources.cgs.map((c) => ({ ...c, image: inline(c.image) ?? c.image })),
+      cgs: state.resources.cgs.map((c) => {
+        const thumb = inline(c.thumb);
+        return { ...c, image: inline(c.image) ?? c.image, ...(thumb !== undefined ? { thumb } : {}) };
+      }),
       audios: state.resources.audios.map((a) => {
         const src = inline(a.src);
         return { ...a, ...(src !== undefined ? { src } : {}) };

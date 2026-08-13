@@ -43,10 +43,15 @@ interface CommonOptions {
   readonly onProgress?: (done: number, total: number) => void;
 }
 
-async function decodePng(bytes: Uint8Array, maxDimension: number): Promise<string | null> {
+/** 列表缩略图最长边（平滑降采样，大幅降低大量图片渲染与内存占用）。 */
+const THUMB_DIM = 256;
+
+async function decodeImages(bytes: Uint8Array, maxDimension: number): Promise<{ image: string; thumb: string } | null> {
   try {
     const img = await decodeHzc1(bytes);
-    return rgbaToPngDataUrl(img.width, img.height, img.rgba, maxDimension);
+    const image = rgbaToPngDataUrl(img.width, img.height, img.rgba, maxDimension);
+    const thumb = rgbaToPngDataUrl(img.width, img.height, img.rgba, THUMB_DIM);
+    return { image, thumb };
   } catch {
     return null;
   }
@@ -73,12 +78,12 @@ export async function importGraphBgBytes(
   let decoded = 0;
   let done = 0;
   for (const bg of bgs) {
-    const image = await decodePng(bg.bytes, maxDimension);
-    if (image !== null) {
+    const result = await decodeImages(bg.bytes, maxDimension);
+    if (result !== null) {
       const key = `bg_${bg.num}`;
       const base = baseBackgrounds[key];
       const name = bg.variant === 0 ? key : `${key}_${bg.variant}`;
-      backgrounds.push({ name, variant: base?.number ?? bg.num, bgFn: base?.fn ?? null, image });
+      backgrounds.push({ name, variant: base?.number ?? bg.num, bgFn: base?.fn ?? null, image: result.image, thumb: result.thumb });
       decoded += 1;
     }
     done += 1;
@@ -105,9 +110,9 @@ export async function importCgBinBytes(
       done += 1;
       continue;
     }
-    const image = await decodePng(entry.bytes, maxDimension);
-    if (image !== null) {
-      cgs.push({ name: entry.name.toUpperCase(), image });
+    const result = await decodeImages(entry.bytes, maxDimension);
+    if (result !== null) {
+      cgs.push({ name: entry.name.toUpperCase(), image: result.image, thumb: result.thumb });
       decoded += 1;
     }
     done += 1;
