@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  schedule:
+    # 每日合成工程回归（UTC 18:00 = 北京时间次日 02:00）
+    - cron: '0 18 * * *'
+
+jobs:
+  test:
+    name: Typecheck · Lint · Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: hcb-editor/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: hcb-editor
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        working-directory: hcb-editor
+        run: pnpm run typecheck
+
+      - name: Lint
+        working-directory: hcb-editor
+        run: pnpm run lint
+
+      - name: Install Playwright browsers
+        working-directory: hcb-editor
+        run: pnpm --filter @hcb-editor/e2e exec playwright install --with-deps chromium
+
+      - name: Test (unit + synthetic scenario + e2e)
+        working-directory: hcb-editor
+        run: pnpm run test

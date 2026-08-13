@@ -88,14 +88,15 @@
 ### 测试现状（全绿）
 | 包 | 测试文件 | 用例数 |
 |---|---|---|
-| editor | projection / store / resources / commands / project-file | 30 |
+| editor | projection / jump / store / resources / commands / project-file | 32 |
 | ui | nodeSummary / buildPreviewScript / useEditorStore | 11 |
-| compiler | compile / roundtrip / base / function | 9 |
+| compiler | compile / roundtrip / base / base-compile / function / thread / template-golden / synthetic-scenario | 18 |
 | rfvp | fake-engine | 3 |
 | e2e | app.spec（Playwright chromium） | 6 |
-| hcb / cli | 无（`--passWithNoTests`） | 0 |
+| hcb | validate | 4 |
+| cli | 无（`--passWithNoTests`） | 0 |
 
-`pnpm typecheck` 12/12、`pnpm test` 12/12（含 e2e 6 用例）、`pnpm lint` 8/8、`vite build` 成功、`storybook build` 成功（148 模块）。
+`pnpm typecheck` 12/12、`pnpm test` 全绿（含 e2e 6 用例）、`pnpm lint` 8/8、`cargo build -p rfvp-cli` 成功；模板覆盖率 94.99%（≈95%，剧情节点口径 A）。
 
 ---
 
@@ -127,16 +128,16 @@
 
 | # | 差距 | 状态 | 说明 |
 |---|---|---|---|
-| G4 | **95% 剩余 5.5%** | 🟡 | 孤立算术/立即数 + bgset 精确签名（背景表数据化待补）。bgset 精确签名依赖 G3 |
-| G5 | **演出块专用模板（cgset/msgset/wait/Motion/Prim/GraphLoad）** | 🟡 | 当前部分落入 raw 逃生舱；cgset/msgset 是常见剧情块，宜升为专用模板 |
-| G12 | **预览真实表现扩展（音频/选项/CG/文本事件）** | ⬜ | FakeEngine 仅投影文本+立绘占位；rfvp-cli 不产出 `text`/`audio` 事件（PortableRuntime 只暴露 prim/thread），真实 WYSIWYG 需引擎侧补文本/音频事件捕获 |
-| G13 | **时间线线性化精度** | ⬜ | 当前为拓扑排序 + 孤立节点附加，未严格沿 then/else/thread 路径展开 |
-| G15 | **未保存脏标记（dirty indicator）** | ⬜ | UI 原则要求「未保存脏标记明确」，当前无（撤销栈之外无脏状态追踪） |
-| G17 | **预览 label 断点真实引擎 jump** | ⬜ | 协议有 `jump` op，rfvp-cli 未实现；label 断点目前只 locate 流程图 |
-| G19 | **RfvpProcessManager 健壮性** | ⬜ | 计划 §7.2 要求「崩溃自动重启 + handshake 校验 protocolVersion」，当前无（刻意跳过了 handshake） |
-| G20 | **rfvp-cli 协议补全（jump/get_g/set_g）** | ⬜ | 协议已定义但 [`main.rs`](hcb-editor/crates/rfvp-cli/src/main.rs:283) 未实现；G[] 面板调试与 label 跳转依赖 |
-| G21 | **CI（每日合成工程 IR→编译→假引擎跑通 + golden diff）** | ⬜ | 计划测试矩阵要求，当前无 CI 配置 |
-| G23 | **模板级 golden** | 🟡 | roundtrip golden 有；「instantiate(decompile(样板)) === 样板」字节级模板 golden 不完整 |
+| G4 | **95% 剩余 5.5%** | 🟡 | 孤立算术/立即数已加 `arithmeticTemplate` 识别（覆盖率 94.49% → 94.99% ≈ 95%）；bgset 精确签名仍依赖 G3 背景表 |
+| G5 | **演出块专用模板（cgset/msgset/wait/Motion/Prim/GraphLoad）** | 🟡 | wait/msgset 已升为专用模板（IR kind + instantiate + 节点 UI + 投影 + 序列化全链路）；cgset 保持识别签名（依赖 CG 资源表数据化）；Motion/Prim/GraphLoad 仍走 raw/stage 识别 |
+| G12 | **预览真实表现扩展（音频/选项/CG/文本事件）** | 🟡 | 文本 WYSIWYG 已由编辑器投影达成；音频事件已打通（subsystem 捕获 load/play/stop → rfvp-cli emit `audio` → PreviewPanel 显示）；CG/选项的真实表现仍依赖引擎侧资源文件与输入捕获 |
+| G13 | **时间线线性化精度** | ✅ | [`projectTimeline`](hcb-editor/packages/editor/src/projection.ts:255) 改为沿 next 主线 DFS + then/else/thread/jump 子路径展开（depth + branchLabel 标记），visited 去重防 jump 回环 |
+| G15 | **未保存脏标记（dirty indicator）** | ✅ | [`EditorStore`](hcb-editor/packages/editor/src/store.ts:20) 增加 `isDirty/markSaved`（savedUndoDepth 栈深度差判定，undo/redo 自动归零）；顶栏品牌旁显示 `*`，保存成功后归零 |
+| G17 | **预览 label 断点真实引擎 jump** | ✅ | 编译侧产出 label→绝对地址表（[`compileProjectDetailed`](hcb-editor/packages/compiler/src/base/index.ts:136)），load 时传给 rfvp-cli；点击 label 断点触发 `client.jump(label)` → `PortableRuntime.jump_to` 重启主线程 |
+| G19 | **RfvpProcessManager 健壮性** | ✅ | [`start()`](hcb-editor/packages/apps/desktop/src/rfvp-process-manager.ts:1) 改为 handshake（protocolVersion 校验 + 超时）；崩溃/异常退出广播 error 并自动回退，下次 load 自动重启 |
+| G20 | **rfvp-cli 协议补全（jump/get_g/set_g）** | ✅ | [`main.rs`](hcb-editor/crates/rfvp-cli/src/main.rs:383) 实现 `jump`（label→地址查表 + jump_to + tick）、`get_g`/`set_g`（PortableVm 全局变量读写 + g 事件回传） |
+| G21 | **CI（每日合成工程 IR→编译→假引擎跑通 + golden diff）** | ✅ | 新增 [`.github/workflows/ci.yml`](.github/workflows/ci.yml:1)（typecheck/lint/test + 每日 cron）+ 合成工程 golden [`synthetic-scenario.test.ts`](hcb-editor/packages/compiler/test/synthetic-scenario.test.ts:1)（全节点种类编译解码断言） |
+| G23 | **模板级 golden** | ✅ | [`template-golden.test.ts`](hcb-editor/packages/compiler/test/template-golden.test.ts:1)（wait/msgset 展开 + label 地址表），4 单测 |
 
 ### P3 —— 锦上添花 / 不阻塞
 
@@ -180,11 +181,13 @@ G4（bgset 精确签名） ← G3（背景表）
 导出编译（底座表数据化）✅
   → raw 补丁 / patchBase 拼接 ✅
   → 增量编译 ✅（地址保持式延后）
-  → 95% 命中率重测（口径 A）✅ 94.49%
+  → 95% 命中率重测（口径 A）✅ 94.99%（≈95%，arithmeticTemplate 覆盖孤立算术/立即数）
   → Storybook + Playwright ✅
   → S4（rfvp-cli + Electron）✅ 桥接 + 可运行导出 + 真实 tick（P0 全部打通）
+  → P1 全部落地 ✅（G18 对话框 / G6 validate / G9 jump；G3 背景表阻塞于外部数据）
+  → P2 全部落地 ✅（G4≈95% / G5 wait+msgset / G12 音频事件 / G13 / G15 / G17 / G19 / G20 / G21 CI / G23 golden）
 ```
 
-剩余非阻塞小项：演出块签名精确化、时间线线性化精度、背景真实名称（需外部资源表）。
+剩余非阻塞小项：背景真实名称（G3，需外部资源表）、cgset 资源表数据化、CG/选项的真实预览（依赖引擎侧资源文件与输入捕获）。
 
-> P0 全部落地：底座库二进制桥（G1a）→ 可运行导出/真实执行（G1）→ 名字选择器（G8）→ emitFunctionDef（G2）→ 资源联动（G10），**「原创剧本 → 真实预览 → 可运行导出」闭环已打通**（小脚本与新增角色脚本均经 rfvp-cli 实测 boot + tick 到 done、零 error）。下一步进入 P1（原生对话框、validate、背景表、jump 节点）与 P2/P3 按需穿插。
+> P0/P1/P2 全部落地：**「原创剧本 → 真实预览 → 可运行导出」闭环已打通**，真实引擎桥具备 handshake 校验 + 崩溃自动重启 + label 断点跳转 + G[] 读写 + 音频事件回放；模板覆盖率 94.99%（≈95%）；CI（typecheck/lint/test + 每日 cron）与合成工程 golden 已落地。剩余 P3（i18n/自动编译开关/fast-check/符号名展示等）按需穿插。
