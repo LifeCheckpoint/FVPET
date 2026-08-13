@@ -167,7 +167,11 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
         case 'error':
           engineReadyRef.current = false;
           setEngineMode('error');
-          setEngineError(ev.message);
+          setEngineError(
+            ev.message.includes('tick failed')
+              ? '真实引擎执行失败（该节点类型的真实执行尚不完整），已回退演示引擎'
+              : ev.message,
+          );
           break;
         default:
           break;
