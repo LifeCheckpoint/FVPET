@@ -6,3 +6,4 @@ export * from './commands.js';
 export * from './store.js';
 export * from './projection.js';
 export * from './project-file.js';
+export * from './project-dir.js';
