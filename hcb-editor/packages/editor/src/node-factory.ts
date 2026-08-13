@@ -23,6 +23,7 @@ export type SelsetNode = Extract<IrNode, { kind: 'selset' }>;
 export type AudioNode = Extract<IrNode, { kind: 'audio' }>;
 export type BranchNode = Extract<IrNode, { kind: 'branch' }>;
 export type ThreadNode = Extract<IrNode, { kind: 'thread' }>;
+export type JumpNode = Extract<IrNode, { kind: 'jump' }>;
 export type RawNode = Extract<IrNode, { kind: 'raw' }>;
 export type CommentNode = Extract<IrNode, { kind: 'comment' }>;
 
@@ -103,6 +104,10 @@ export function branchNode(cond: CondExpr, thenLabel: string, elseLabel: string)
 
 export function threadNode(slot: number, entry: string): ThreadNode {
   return { kind: 'thread', slot, entry };
+}
+
+export function jumpNode(target: string): JumpNode {
+  return { kind: 'jump', target };
 }
 
 export function commentNode(text: string): CommentNode {

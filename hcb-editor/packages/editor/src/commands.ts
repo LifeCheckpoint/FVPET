@@ -12,7 +12,7 @@
 import { enablePatches, produceWithPatches, type Patch } from 'immer';
 import type { CondExpr, IrNode } from '@hcb-editor/hcb/ir';
 import type { EdgeKind, EditorDocument, EditorState } from './state.js';
-import { branchNode, labelNode, speakNode } from './node-factory.js';
+import { branchNode, jumpNode, labelNode, speakNode } from './node-factory.js';
 import type { AudioResource, BackgroundResource, CharacterResource } from './resources.js';
 
 // Immer patches 插件需在模块加载时启用一次
@@ -78,6 +78,15 @@ function validateEdgeTargets(
       }
       if (dst.node.kind !== 'label') {
         return 'thread 连线必须指向 label 节点';
+      }
+      return null;
+    }
+    case 'jump': {
+      if (src.node.kind !== 'jump') {
+        return 'jump 连线只能从 jump 节点出发';
+      }
+      if (dst.node.kind !== 'label') {
+        return 'jump 连线必须指向 label 节点';
       }
       return null;
     }
@@ -282,6 +291,10 @@ export function addDiaNode(text: string, position: { readonly x: number; readonl
 
 export function addBranchNode(cond: CondExpr, position: { readonly x: number; readonly y: number }): Command {
   return addNode(branchNode(cond, '', ''), position);
+}
+
+export function addJumpNode(target: string, position: { readonly x: number; readonly y: number }): Command {
+  return addNode(jumpNode(target), position);
 }
 
 export function addCommentNode(text: string, position: { readonly x: number; readonly y: number }): Command {

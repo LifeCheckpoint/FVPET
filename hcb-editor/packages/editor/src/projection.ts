@@ -123,6 +123,13 @@ export function projectToIr(document: EditorDocument, header: IrScript['header']
           entry: edge ? labelNameOf(document, edge.target) : n.entry,
         };
       }
+      case 'jump': {
+        const edge = document.edges.find((e) => e.source === docNode.id && e.kind === 'jump');
+        return {
+          ...n,
+          target: edge ? labelNameOf(document, edge.target) : n.target,
+        };
+      }
       default:
         return n;
     }
@@ -201,6 +208,11 @@ function lineText(node: DocNode, document: EditorDocument): string[] {
       const edge = document.edges.find((e) => e.source === node.id && e.kind === 'thread');
       const entry = edge ? labelNameOf(document, edge.target) : n.entry;
       return [`thread slot ${n.slot} → ${entry}`];
+    }
+    case 'jump': {
+      const edge = document.edges.find((e) => e.source === node.id && e.kind === 'jump');
+      const target = edge ? labelNameOf(document, edge.target) : n.target;
+      return [`jump ${target}`];
     }
     case 'raw':
       return [`# raw（未识别演出块 · ${n.bytes.byteLength} 字节）`];

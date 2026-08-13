@@ -21,7 +21,7 @@ export interface DocNode {
  * - then / else：branch 节点的两个分支（target 必须为 label 节点）
  * - thread：thread 节点的入口（target 必须为 label 节点）
  */
-export type EdgeKind = 'next' | 'then' | 'else' | 'thread';
+export type EdgeKind = 'next' | 'then' | 'else' | 'thread' | 'jump';
 
 export interface DocEdge {
   readonly id: string;
