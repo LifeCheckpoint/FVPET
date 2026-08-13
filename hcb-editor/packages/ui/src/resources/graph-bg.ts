@@ -3,7 +3,7 @@
  *
  * 三者都是 FVP VFS 归档，条目为 hzc1 图片：
  * - graph_bg.bin：`BG<编号>_<变体>[b]`，编号 = 底座背景号，变体 = 时段（000 白天/010 黄昏/020 夜晚…），
- *   `b` 后缀为次要层；导入时按编号去重、保留最小变体（默认白天）。
+ *   `b` 后缀为次要层；全量导入（默认变体命名 `bg_<编号>`，其余命名 `bg_<编号>_<变体>`）。
  * - graph_vis.bin / graph_vish.bin：事件 CG（2560×1440），条目名即 CG 名，全部导入。
  */
 
@@ -50,25 +50,22 @@ export async function importGraphBgBytes(
   const { maxDimension = 1280, baseBackgrounds = {}, onProgress } = opts;
   const entries = parseBinArchive(bytes);
 
-  // 分类：BG 背景按编号去重保留最小变体；其余按 CG 全量。
-  const bgByNum = new Map<number, { variant: number; bytes: Uint8Array }>();
+  // 分类：BG 背景（跳过 b 次要层）全量导入；其余按 CG 全量。
+  const bgs: { num: number; variant: number; bytes: Uint8Array }[] = [];
   const cgs: { name: string; bytes: Uint8Array }[] = [];
   for (const entry of entries) {
     const parsed = parseBgEntryName(entry.name);
     if (parsed && !parsed.blur) {
-      const existing = bgByNum.get(parsed.num);
-      if (!existing || parsed.variant < existing.variant) {
-        bgByNum.set(parsed.num, { variant: parsed.variant, bytes: entry.bytes });
-      }
+      bgs.push({ num: parsed.num, variant: parsed.variant, bytes: entry.bytes });
     } else if (!parsed) {
       cgs.push({ name: entry.name, bytes: entry.bytes });
     }
   }
+  bgs.sort((a, b) => a.num - b.num || a.variant - b.variant);
 
   const backgrounds: Omit<BackgroundResource, 'id'>[] = [];
   let decoded = 0;
-  const nums = [...bgByNum.keys()].sort((a, b) => a - b);
-  const total = nums.length + cgs.length;
+  const total = bgs.length + cgs.length;
   let done = 0;
 
   const decode = async (bytesToDecode: Uint8Array): Promise<string | null> => {
@@ -80,13 +77,13 @@ export async function importGraphBgBytes(
     }
   };
 
-  for (const num of nums) {
-    const item = bgByNum.get(num)!;
-    const image = await decode(item.bytes);
+  for (const bg of bgs) {
+    const image = await decode(bg.bytes);
     if (image !== null) {
-      const key = `bg_${num}`;
+      const key = `bg_${bg.num}`;
       const base = baseBackgrounds[key];
-      backgrounds.push({ name: key, variant: base?.number ?? num, bgFn: base?.fn ?? null, image });
+      const name = bg.variant === 0 ? key : `${key}_${bg.variant}`;
+      backgrounds.push({ name, variant: base?.number ?? bg.num, bgFn: base?.fn ?? null, image });
       decoded += 1;
     }
     done += 1;

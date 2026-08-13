@@ -1,7 +1,7 @@
 /**
  * hzc1/nvsg 图片解码（FVP 资源格式）。
  * 格式：`"hzc1" + original_length(u32) + header_length(u32=32)` + NVSG 头（32 字节）+ zlib 压缩像素。
- * - type=0 Single24Bit：RGB（背景）
+ * - type=0 Single24Bit：BGR 字节序（背景，蓝绿红）
  * - type=1/2 Single/Multi32Bit：BGRA 预乘 alpha（立绘）
  * 像素解压后做 unpremultiply 转标准 RGBA。
  */
@@ -84,11 +84,11 @@ async function decodeHzcRaw(bytes: Uint8Array): Promise<{
   const pixelCount = width * height * entryCount;
   const rgba = new Uint8Array(pixelCount * 4);
   if (type === 0) {
-    // Single24Bit：RGB，无 alpha
+    // Single24Bit：BGR 字节序（蓝、绿、红），无 alpha
     for (let i = 0; i < pixelCount; i += 1) {
-      rgba[i * 4] = raw[i * 3]!;
+      rgba[i * 4] = raw[i * 3 + 2]!;
       rgba[i * 4 + 1] = raw[i * 3 + 1]!;
-      rgba[i * 4 + 2] = raw[i * 3 + 2]!;
+      rgba[i * 4 + 2] = raw[i * 3]!;
       rgba[i * 4 + 3] = 255;
     }
   } else if (type === 1 || type === 2) {

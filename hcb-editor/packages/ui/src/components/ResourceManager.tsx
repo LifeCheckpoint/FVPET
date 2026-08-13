@@ -628,7 +628,7 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
           )}
 
           {tab === 'audios' && (
-            <div className="resource-grid">
+            <div className="resource-grid resource-grid--audio">
               {state.resources.audios.length === 0 && (
                 <div className="resource-empty">还没有音频，点击下方「添加音频」。</div>
               )}

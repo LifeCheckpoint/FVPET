@@ -47,6 +47,21 @@ function buildHzcMulti(
   return out;
 }
 
+function buildHzc24(width: number, height: number, bgr: Uint8Array): Uint8Array {
+  const compressed = deflateSync(bgr);
+  const out = new Uint8Array(12 + 32 + compressed.length);
+  out.set([0x68, 0x7a, 0x63, 0x31], 0); // "hzc1"
+  const dv = new DataView(out.buffer);
+  dv.setUint32(4, bgr.length, true); // original_length
+  dv.setUint32(8, 32, true); // header_length
+  out.set([0x4e, 0x56, 0x53, 0x47], 12); // "NVSG"
+  dv.setUint16(12 + 6, 0, true); // type = Single24Bit
+  dv.setUint16(12 + 8, width, true);
+  dv.setUint16(12 + 10, height, true);
+  out.set(compressed, 44);
+  return out;
+}
+
 describe('decodeHzc1', () => {
   it('decodes 32bit premultiplied BGRA to unpremultiplied RGBA', async () => {
     const bgra = new Uint8Array([
@@ -68,6 +83,26 @@ describe('decodeHzc1', () => {
     expect(img.rgba[5]).toBe(255);
     expect(img.rgba[6]).toBe(0);
     expect(img.rgba[7]).toBe(128);
+  });
+
+  it('decodes 24bit BGR to RGBA', async () => {
+    // BGR 字节序：蓝 = [255,0,0]，绿 = [0,255,0]
+    const bgr = new Uint8Array([
+      255, 0, 0, // 蓝
+      0, 255, 0, // 绿
+    ]);
+    const img = await decodeHzc1(buildHzc24(2, 1, bgr));
+
+    // 像素 0：蓝（R=0,G=0,B=255）
+    expect(img.rgba[0]).toBe(0);
+    expect(img.rgba[1]).toBe(0);
+    expect(img.rgba[2]).toBe(255);
+    expect(img.rgba[3]).toBe(255);
+    // 像素 1：绿（R=0,G=255,B=0）
+    expect(img.rgba[4]).toBe(0);
+    expect(img.rgba[5]).toBe(255);
+    expect(img.rgba[6]).toBe(0);
+    expect(img.rgba[7]).toBe(255);
   });
 });
 

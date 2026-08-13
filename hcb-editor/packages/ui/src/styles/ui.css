@@ -1226,6 +1226,11 @@
   gap: 10px;
 }
 
+/* 音频卡片需要更宽（播放器进度条较长），列数减少。 */
+.resource-grid--audio {
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+}
+
 .resource-empty {
   grid-column: 1 / -1;
   padding: 24px 12px;
