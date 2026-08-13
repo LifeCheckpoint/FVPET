@@ -90,8 +90,21 @@
 }
 
 .app__body {
-  display: grid;
-  grid-template-columns: 252px 1fr 40%;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* 左侧调色板列（宽度由 AppShell 内联控制） */
+.app__palette-col {
+  flex: none;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.app__palette-col .palette {
+  width: 100%;
   flex: 1;
   min-height: 0;
 }
@@ -177,6 +190,7 @@
 /* ---------------------------------------------------------------- 中间画布 */
 .app__canvas {
   position: relative;
+  flex: 1 1 auto;
   min-width: 0;
 }
 
@@ -288,6 +302,7 @@
 .app__right {
   display: flex;
   flex-direction: column;
+  flex: none;
   min-width: 0;
   background: var(--bg-surface);
   border-left: 1px solid var(--border-default);
@@ -2147,4 +2162,334 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- 面板分隔条（可拖拽调节） */
+.app__resizer {
+  flex: none;
+  z-index: 20;
+  background: transparent;
+  transition: background 120ms ease;
+}
+
+.app__resizer--col {
+  width: 5px;
+  cursor: col-resize;
+}
+
+.app__resizer--row {
+  height: 5px;
+  cursor: row-resize;
+}
+
+.app__resizer:hover,
+.app__resizer:active {
+  background: var(--accent);
+}
+
+/* ---------------------------------------------------------------- 连接点把手（加大，易点击） */
+.react-flow__node .react-flow__handle {
+  width: 14px;
+  height: 14px;
+  min-width: 14px;
+  min-height: 14px;
+  border: 2px solid var(--bg-raised);
+  border-radius: 50%;
+  background: var(--accent);
+  transition: transform 100ms ease, background 100ms ease;
+}
+
+.react-flow__node .react-flow__handle:hover {
+  transform: scale(1.15);
+  background: var(--accent-strong);
+}
+
+/* ---------------------------------------------------------------- 节点右键菜单 */
+.flow-context-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 998;
+}
+
+.flow-context-menu {
+  position: fixed;
+  z-index: 999;
+  min-width: 196px;
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-panel);
+}
+
+.flow-context-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  font-size: 12.5px;
+  text-align: left;
+  color: var(--text-primary);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.flow-context-menu__item:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.flow-context-menu__item:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.flow-context-menu__item--danger {
+  color: var(--danger);
+}
+
+.flow-context-menu__item--danger:hover:not(:disabled) {
+  color: var(--danger);
+  background: var(--bg-hover);
+}
+
+.flow-context-menu__sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border-default);
+}
+
+/* ---------------------------------------------------------------- 属性面板资源选择 */
+.pp__pick-btn {
+  flex: none;
+  height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+  color: var(--accent);
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.pp__pick-btn:hover {
+  border-color: var(--accent);
+  background: var(--accent-muted);
+}
+
+.pp__picker-preview {
+  width: 100%;
+  max-height: 120px;
+  object-fit: contain;
+  margin-top: 6px;
+  background: #0b0d10;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+}
+
+.pp__picker-preview--portrait {
+  max-height: 180px;
+}
+
+/* ---------------------------------------------------------------- 资源选择器（二级窗口） */
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.picker__back {
+  align-self: flex-start;
+}
+
+.picker-heading {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.picker-empty {
+  grid-column: 1 / -1;
+  padding: 24px 12px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 10px;
+}
+
+.picker-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  font-family: inherit;
+  text-align: left;
+  color: var(--text-primary);
+  background: var(--bg-raised);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.picker-card:hover {
+  border-color: var(--border-accent);
+  background: var(--bg-hover);
+}
+
+.picker-card__thumb {
+  height: 92px;
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+  background: #0b0d10;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+}
+
+.picker-card__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.picker-card__fallback {
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker-card__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.picker-card__name {
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker-card__sub {
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
+/* 立绘选择：姿势卡片 + 表情切片 */
+.picker-pose {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.picker-faces {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.picker-face {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 4px;
+  border: 1px solid var(--border-default);
+  background: #0b0d10;
+  cursor: pointer;
+  transition: border-color 120ms ease;
+}
+
+.picker-face:hover {
+  border-color: var(--border-accent);
+}
+
+.picker-face img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.picker-face__num {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  padding: 0 3px;
+  font-size: 8.5px;
+  line-height: 12px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 3px;
+}
+
+/* 音频选择列表 */
+.picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.picker-audio {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.picker-audio:hover {
+  border-color: var(--border-accent);
+  background: var(--bg-hover);
+}
+
+.picker-audio__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.picker-audio__label {
+  font-size: 12.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker-audio__num {
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
+.picker-audio__player {
+  flex: none;
+  width: 240px;
+  height: 30px;
 }

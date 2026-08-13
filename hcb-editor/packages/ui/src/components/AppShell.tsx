@@ -3,7 +3,7 @@
  * 左 = 节点调色板 + 资源入口；中 = 流程图主画布；右 = 属性 / 剧本文本切换。
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
 import { deserializeProject } from '@hcb-editor/editor';
 import { saveBinaryFile } from '../fileDialog.js';
@@ -26,6 +26,28 @@ import type { CreatableNodeKind } from '../theme/meta.js';
 type RightView = 'property' | 'script' | 'timeline';
 type MainView = 'editor' | 'workspace';
 
+/** 分隔条拖拽：mousedown 后全局监听 mousemove/mouseup，按增量回调。 */
+function dragResize(e: ReactMouseEvent, cursor: string, onMove: (dx: number, dy: number) => void): void {
+  e.preventDefault();
+  let lastX = e.clientX;
+  let lastY = e.clientY;
+  const onMouseMove = (ev: MouseEvent): void => {
+    onMove(ev.clientX - lastX, ev.clientY - lastY);
+    lastX = ev.clientX;
+    lastY = ev.clientY;
+  };
+  const onMouseUp = (): void => {
+    window.removeEventListener('mousemove', onMouseMove);
+    window.removeEventListener('mouseup', onMouseUp);
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  };
+  window.addEventListener('mousemove', onMouseMove);
+  window.addEventListener('mouseup', onMouseUp);
+  document.body.style.cursor = cursor;
+  document.body.style.userSelect = 'none';
+}
+
 export function AppShell() {
   const { store, state } = useEditorStore();
   const { prefs, update } = usePreferences();
@@ -37,6 +59,15 @@ export function AppShell() {
   const [showSettings, setShowSettings] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
   const wizardShown = useRef(false);
+
+  // 面板尺寸（可拖拽调节，内存态，不持久化）。
+  const [leftWidth, setLeftWidth] = useState(252);
+  const [rightWidth, setRightWidth] = useState(() => Math.max(320, Math.round(window.innerWidth * 0.38)));
+  const [previewRatio, setPreviewRatio] = useState(0.55);
+  const rightRef = useRef<HTMLElement>(null);
+
+  const clampLeft = (w: number): number => Math.min(480, Math.max(200, w));
+  const clampRight = (w: number): number => Math.min(window.innerWidth - 400, Math.max(320, w));
 
   useEffect(() => {
     document.documentElement.dataset.theme = prefs.theme;
@@ -170,9 +201,17 @@ const exportHcb = () => {
 
       {view === 'editor' ? (
         <div className="app__body">
-        <Palette onAdd={addNode} onOpenResources={() => setView('workspace')} />
+          <div className="app__palette-col" style={{ width: leftWidth }}>
+            <Palette onAdd={addNode} onOpenResources={() => setView('workspace')} />
+          </div>
+          <div
+            className="app__resizer app__resizer--col"
+            role="separator"
+            aria-orientation="vertical"
+            onMouseDown={(e) => dragResize(e, 'col-resize', (dx) => setLeftWidth((w) => clampLeft(w + dx)))}
+          />
 
-        <main className="app__canvas">
+          <main className="app__canvas">
           <ReactFlowProvider>
             <FlowCanvas ref={flowRef} state={state} store={store} />
           </ReactFlowProvider>
@@ -187,13 +226,31 @@ const exportHcb = () => {
               </ol>
             </div>
           )}
-        </main>
+          </main>
 
-        <section className="app__right">
-          <div className="app__preview">
-            <PreviewPanel state={state} ratio={prefs.previewRatio} onLocate={locateNode} />
-          </div>
-          <div className="app__info">
+          <div
+            className="app__resizer app__resizer--col"
+            role="separator"
+            aria-orientation="vertical"
+            onMouseDown={(e) => dragResize(e, 'col-resize', (dx) => setRightWidth((w) => clampRight(w - dx)))}
+          />
+
+          <section className="app__right" ref={rightRef} style={{ width: rightWidth }}>
+            <div className="app__preview" style={{ flex: `${previewRatio} 1 0` }}>
+              <PreviewPanel state={state} ratio={prefs.previewRatio} onLocate={locateNode} />
+            </div>
+            <div
+              className="app__resizer app__resizer--row"
+              role="separator"
+              aria-orientation="horizontal"
+              onMouseDown={(e) =>
+                dragResize(e, 'row-resize', (_dx, dy) => {
+                  const h = rightRef.current?.clientHeight ?? 400;
+                  setPreviewRatio((r) => Math.min(0.85, Math.max(0.2, r + dy / h)));
+                })
+              }
+            />
+            <div className="app__info" style={{ flex: `${1 - previewRatio} 1 0` }}>
             <div className="app__tabs" role="tablist">
               <button
                 type="button"

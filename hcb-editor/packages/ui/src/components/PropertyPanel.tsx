@@ -3,13 +3,14 @@
  * 通过 editNode 命令全量替换节点；分支 then/else 由流程图连线决定，此处只读展示。
  */
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { availableBaseBackgrounds, availableBaseCharacters } from '@hcb-editor/compiler';
-import type { EditorState } from '@hcb-editor/editor';
+import type { AudioResource, EditorState } from '@hcb-editor/editor';
 import type { EditorStore } from '@hcb-editor/editor';
 import { nodeKindLabel } from '../theme/meta.js';
 import { renderCond } from '@hcb-editor/editor';
 import type { IrNode } from '@hcb-editor/hcb/ir';
+import { ResourcePicker, type ResourcePickerKind, type ResourcePickerResult } from './ResourcePicker.js';
 
 export interface PropertyPanelProps {
   readonly state: EditorState;
@@ -46,6 +47,8 @@ export function PropertyPanel({ state, store }: PropertyPanelProps) {
   const backgroundOptions = useMemo(() => [...new Set([...baseBackgrounds, ...projectBackgrounds])], [baseBackgrounds, projectBackgrounds]);
   const cgOptions = useMemo(() => [...new Set(projectCgs)], [projectCgs]);
 
+  const [picker, setPicker] = useState<{ readonly kind: ResourcePickerKind; readonly audioType?: AudioResource['type'] } | null>(null);
+
   const selectedId = state.selection.nodeId;
   const docNode = selectedId ? state.document.nodes.find((n) => n.id === selectedId) : undefined;
 
@@ -62,6 +65,26 @@ export function PropertyPanel({ state, store }: PropertyPanelProps) {
 
   const edit = (nextNode: IrNode) => {
     store.dispatch({ kind: 'edit_node', id: docNode.id, node: nextNode });
+  };
+
+  /** 选择器回填：把可视化选择结果写回当前音画节点的对应字段。 */
+  const applyPick = (result: ResourcePickerResult): void => {
+    setPicker(null);
+    if (result.kind === 'background' && node.kind === 'bgset') {
+      const next = { ...node, background: result.name };
+      if (result.variant === 0) {
+        delete next.variant;
+      } else {
+        next.variant = result.variant;
+      }
+      edit(next);
+    } else if (result.kind === 'cg' && node.kind === 'cgset') {
+      edit({ ...node, name: result.name });
+    } else if (result.kind === 'character' && node.kind === 'bsset') {
+      edit({ ...node, character: result.character, pose: result.pose, costume: result.costume, expression: result.expression });
+    } else if (result.kind === 'audio' && node.kind === 'audio') {
+      edit({ ...node, channelOrNum: result.number });
+    }
   };
 
   return (
@@ -141,15 +164,19 @@ export function PropertyPanel({ state, store }: PropertyPanelProps) {
 
       {node.kind === 'bgset' && (
         <>
-          <label className="pp__field">
+          <div className="pp__field">
             <span className="pp__label">背景</span>
             <div className="pp__picker">
               <input className="pp__input" list="hcb-backgrounds" value={node.background} onChange={(e) => edit({ ...node, background: e.target.value })} />
-              {state.resources.backgrounds.find((b) => b.name === node.background)?.image && (
-                <img className="pp__picker-thumb" src={state.resources.backgrounds.find((b) => b.name === node.background)!.image} alt={node.background} />
-              )}
+              <button type="button" className="pp__pick-btn" onClick={() => setPicker({ kind: 'background' })}>
+                选择…
+              </button>
             </div>
-          </label>
+            {(() => {
+              const bg = state.resources.backgrounds.find((b) => b.name === node.background);
+              return bg?.image ? <img className="pp__picker-preview" src={bg.thumb ?? bg.image} alt={node.background} /> : null;
+            })()}
+          </div>
           <label className="pp__field">
             <span className="pp__label">变体编号</span>
             <input
@@ -173,16 +200,19 @@ export function PropertyPanel({ state, store }: PropertyPanelProps) {
 
       {node.kind === 'cgset' && (
         <>
-          <label className="pp__field">
+          <div className="pp__field">
             <span className="pp__label">CG</span>
             <div className="pp__picker">
               <input className="pp__input" list="hcb-cgs" value={node.name} onChange={(e) => edit({ ...node, name: e.target.value })} />
-              {(() => {
-                const cg = state.resources.cgs.find((c) => c.name.toLowerCase() === node.name.toLowerCase());
-                return cg ? <img className="pp__picker-thumb" src={cg.image} alt={node.name} /> : null;
-              })()}
+              <button type="button" className="pp__pick-btn" onClick={() => setPicker({ kind: 'cg' })}>
+                选择…
+              </button>
             </div>
-          </label>
+            {(() => {
+              const cg = state.resources.cgs.find((c) => c.name.toLowerCase() === node.name.toLowerCase());
+              return cg ? <img className="pp__picker-preview" src={cg.thumb ?? cg.image} alt={node.name} /> : null;
+            })()}
+          </div>
           <div className="pp__field">
             <span className="pp__label">槽位 slot / 模式 mode / 标志 flag</span>
             <div className="pp__choice">
@@ -262,19 +292,22 @@ export function PropertyPanel({ state, store }: PropertyPanelProps) {
 
       {node.kind === 'bsset' && (
         <>
-          <label className="pp__field">
+          <div className="pp__field">
             <span className="pp__label">角色</span>
             <div className="pp__picker">
               <input className="pp__input" list="hcb-speakers" value={node.character} onChange={(e) => edit({ ...node, character: e.target.value })} />
-              {(() => {
-                const char = state.resources.characters.find((c) => c.name === node.character);
-                const pose = char?.poses?.find((p) => p.pose === node.pose && p.costume === node.costume);
-                const faceImg = node.expression > 0 ? pose?.faces.find((f) => f.face === node.expression)?.image : undefined;
-                const img = faceImg ?? pose?.image ?? char?.image;
-                return img ? <img className="pp__picker-thumb" src={img} alt={node.character} /> : null;
-              })()}
+              <button type="button" className="pp__pick-btn" onClick={() => setPicker({ kind: 'character' })}>
+                选择…
+              </button>
             </div>
-          </label>
+            {(() => {
+              const char = state.resources.characters.find((c) => c.name === node.character);
+              const pose = char?.poses?.find((p) => p.pose === node.pose && p.costume === node.costume);
+              const faceImg = node.expression > 0 ? pose?.faces.find((f) => f.face === node.expression)?.image : undefined;
+              const img = faceImg ?? pose?.image ?? char?.image;
+              return img ? <img className="pp__picker-preview pp__picker-preview--portrait" src={img} alt={node.character} /> : null;
+            })()}
+          </div>
           <label className="pp__field">
             <span className="pp__label">姿势 pose</span>
             <input className="pp__input" type="number" value={node.pose} onChange={(e) => edit({ ...node, pose: Number(e.target.value) })} />
@@ -315,25 +348,9 @@ export function PropertyPanel({ state, store }: PropertyPanelProps) {
             <span className="pp__label">编号</span>
             <div className="pp__picker">
               <input className="pp__input" type="number" value={node.channelOrNum} onChange={(e) => edit({ ...node, channelOrNum: Number(e.target.value) })} />
-              <select
-                className="pp__input"
-                value=""
-                onChange={(e) => {
-                  const n = Number(e.target.value);
-                  if (Number.isFinite(n)) {
-                    edit({ ...node, channelOrNum: n });
-                  }
-                }}
-              >
-                <option value="">从资源选…</option>
-                {state.resources.audios
-                  .filter((a) => a.type === node.type)
-                  .map((a) => (
-                    <option key={a.id} value={a.number}>
-                      {a.label || `#${a.number}`}
-                    </option>
-                  ))}
-              </select>
+              <button type="button" className="pp__pick-btn" onClick={() => setPicker({ kind: 'audio', audioType: node.type })}>
+                选择…
+              </button>
             </div>
           </label>
           <label className="pp__field pp__field--check">
@@ -400,6 +417,16 @@ export function PropertyPanel({ state, store }: PropertyPanelProps) {
           <div className="pp__readonly">{node.bytes.byteLength} 字节 · 只读占位</div>
           <div className="pp__hint">raw 块内部不可编辑，仅可整体删除或保留。</div>
         </div>
+      )}
+
+      {picker && (
+        <ResourcePicker
+          kind={picker.kind}
+          state={state}
+          {...(picker.audioType !== undefined ? { audioType: picker.audioType } : {})}
+          onPick={applyPick}
+          onClose={() => setPicker(null)}
+        />
       )}
     </div>
   );
