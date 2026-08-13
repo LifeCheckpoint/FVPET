@@ -39,25 +39,42 @@ function loadPixi(): Promise<PixiModule> {
 type AppInstance = InstanceType<PixiModule['Application']>;
 type GraphicsCtor = PixiModule['Graphics'];
 type TextCtor = PixiModule['Text'];
+type SpriteCtor = PixiModule['Sprite'];
+type TextureCtor = PixiModule['Texture'];
 
 function drawPrims(
   app: AppInstance,
   Graphics: GraphicsCtor,
   Text: TextCtor,
+  Sprite: SpriteCtor,
+  Texture: TextureCtor,
   prims: readonly FakePrim[],
 ): void {
   app.stage.removeChildren().forEach((child) => child.destroy());
   for (const prim of prims) {
     const w = prim.w && prim.w > 0 ? prim.w : PRIM_W;
     const h = prim.h && prim.h > 0 ? prim.h : PRIM_H;
-    const g = new Graphics();
-    g.roundRect(prim.x, prim.y, w, h, 6);
-    g.fill({ color: PRIM_COLOR, alpha: prim.alpha });
-    g.stroke({ color: 0x5b6b84, width: 1, alpha: prim.alpha });
-    g.zIndex = prim.z;
-    g.scale.set(prim.scale);
-    g.angle = prim.rotate;
-    app.stage.addChild(g);
+    if (prim.image) {
+      const sprite = new Sprite(Texture.from(prim.image));
+      sprite.width = w;
+      sprite.height = h;
+      sprite.x = prim.x;
+      sprite.y = prim.y;
+      sprite.zIndex = prim.z;
+      sprite.alpha = prim.alpha;
+      sprite.scale.set(prim.scale);
+      sprite.angle = prim.rotate;
+      app.stage.addChild(sprite);
+    } else {
+      const g = new Graphics();
+      g.roundRect(prim.x, prim.y, w, h, 6);
+      g.fill({ color: PRIM_COLOR, alpha: prim.alpha });
+      g.stroke({ color: 0x5b6b84, width: 1, alpha: prim.alpha });
+      g.zIndex = prim.z;
+      g.scale.set(prim.scale);
+      g.angle = prim.rotate;
+      app.stage.addChild(g);
+    }
 
     if (prim.label) {
       const label = new Text({
@@ -92,6 +109,8 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
   const appRef = useRef<AppInstance | null>(null);
   const graphicsRef = useRef<GraphicsCtor | null>(null);
   const textRef = useRef<TextCtor | null>(null);
+  const spriteRef = useRef<SpriteCtor | null>(null);
+  const textureRef = useRef<TextureCtor | null>(null);
   const primsRef = useRef<readonly FakePrim[]>([]);
 
   const clientRef = useRef<RfvpClient | null>(null);
@@ -138,8 +157,10 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
           const app = appRef.current;
           const Graphics = graphicsRef.current;
           const Text = textRef.current;
-          if (app && Graphics && Text) {
-            drawPrims(app, Graphics, Text, ev.prims);
+          const Sprite = spriteRef.current;
+          const Texture = textureRef.current;
+          if (app && Graphics && Text && Sprite && Texture) {
+            drawPrims(app, Graphics, Text, Sprite, Texture, ev.prims);
           }
           break;
         }
@@ -159,12 +180,14 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
     let disposed = false;
     let app: AppInstance | null = null;
 
-    loadPixi().then(({ Application, Graphics, Text }) => {
+    loadPixi().then(({ Application, Graphics, Text, Sprite, Texture }) => {
       if (disposed) {
         return;
       }
       graphicsRef.current = Graphics;
       textRef.current = Text;
+      spriteRef.current = Sprite;
+      textureRef.current = Texture;
       const appInstance = new Application();
       app = appInstance;
       return appInstance
@@ -178,7 +201,7 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
           appInstance.stage.sortableChildren = true;
           hostRef.current?.appendChild(appInstance.canvas);
           appRef.current = appInstance;
-          drawPrims(appInstance, Graphics, Text, primsRef.current);
+          drawPrims(appInstance, Graphics, Text, Sprite, Texture, primsRef.current);
         });
     });
 
@@ -188,6 +211,8 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
       appRef.current = null;
       graphicsRef.current = null;
       textRef.current = null;
+      spriteRef.current = null;
+      textureRef.current = null;
     };
   }, [width, height]);
 
@@ -210,7 +235,7 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
 
   // 文档变化 → 重算投影队列 + 重载真实引擎 + 重绘回退 prim
   useEffect(() => {
-    const script: FakeScript = buildPreviewScript(state.document, state.header);
+    const script: FakeScript = buildPreviewScript(state.document, state.header, state.resources);
     textsRef.current = script.texts;
     cursorRef.current = 0;
     primsRef.current = script.prims ?? [];
@@ -257,8 +282,10 @@ if (client.supported) {
     const app = appRef.current;
     const Graphics = graphicsRef.current;
     const Text = textRef.current;
-    if (app && Graphics && Text) {
-      drawPrims(app, Graphics, Text, primsRef.current);
+    const Sprite = spriteRef.current;
+    const Texture = textureRef.current;
+    if (app && Graphics && Text && Sprite && Texture) {
+      drawPrims(app, Graphics, Text, Sprite, Texture, primsRef.current);
     }
   }, [state.document, state.header]);
 

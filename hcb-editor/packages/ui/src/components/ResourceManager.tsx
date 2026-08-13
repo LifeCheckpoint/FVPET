@@ -1,6 +1,7 @@
 /**
  * 资源管理器：角色 / 背景 / 音频三张可编辑卡片（模态对话框）。
- * 卡片给出资源本身的视觉占位（头像 / 缩略图 / 类型徽章），
+ * 卡片给出资源本身的视觉表现（立绘缩略图 / 背景缩略图 / 音频试听），
+ * 支持导入本地图片 / 音频（FileReader → data URL），
  * 技术字段（函数地址 / pose / costume / face 等）折叠为次要小字，降低陌生感。
  * 修改走资源命令（add/edit/remove），undo/redo 由 store 统一接管。
  */
@@ -46,6 +47,15 @@ function avatarStyle(name: string): CSSProperties {
   return { background: `hsl(${h} 38% 26%)`, color: `hsl(${h} 62% 78%)` };
 }
 
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error ?? new Error('读取文件失败'));
+    reader.readAsDataURL(file);
+  });
+}
+
 function updateCharacter(r: CharacterResource, patch: {
   readonly name?: string;
   readonly alias?: string;
@@ -53,6 +63,7 @@ function updateCharacter(r: CharacterResource, patch: {
   readonly pose?: number;
   readonly costume?: number;
   readonly face?: number;
+  readonly image?: string;
 }): CharacterResource {
   const next = { ...r };
   if (patch.name !== undefined) next.name = patch.name;
@@ -67,6 +78,13 @@ function updateCharacter(r: CharacterResource, patch: {
   if (patch.pose !== undefined) next.pose = patch.pose;
   if (patch.costume !== undefined) next.costume = patch.costume;
   if (patch.face !== undefined) next.face = patch.face;
+  if (patch.image !== undefined) {
+    if (patch.image === '') {
+      delete next.image;
+    } else {
+      next.image = patch.image;
+    }
+  }
   return next;
 }
 
@@ -74,11 +92,19 @@ function updateBackground(r: BackgroundResource, patch: {
   readonly name?: string;
   readonly variant?: number;
   readonly bgFn?: number | null;
+  readonly image?: string;
 }): BackgroundResource {
   const next = { ...r };
   if (patch.name !== undefined) next.name = patch.name;
   if (patch.variant !== undefined) next.variant = patch.variant;
   if (patch.bgFn !== undefined) next.bgFn = patch.bgFn;
+  if (patch.image !== undefined) {
+    if (patch.image === '') {
+      delete next.image;
+    } else {
+      next.image = patch.image;
+    }
+  }
   return next;
 }
 
@@ -86,8 +112,13 @@ function updateAudio(r: AudioResource, patch: {
   readonly type?: AudioResource['type'];
   readonly number?: number;
   readonly label?: string;
+  readonly src?: string;
 }): AudioResource {
-  return { ...r, ...patch };
+  const next = { ...r, ...patch };
+  if (patch.src === '') {
+    delete next.src;
+  }
+  return next;
 }
 
 export interface ResourceManagerProps {
@@ -131,12 +162,31 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
               {state.resources.characters.map((r) => (
                 <article className="resource-card" key={r.id}>
                   <header className="resource-card__head">
-                    <span className="resource-card__avatar" style={avatarStyle(r.name)}>
-                      {r.name.trim().slice(0, 1) || '?'}
-                    </span>
+                    {r.image ? (
+                      <img className="resource-card__avatar-img" src={r.image} alt={r.name} />
+                    ) : (
+                      <span className="resource-card__avatar" style={avatarStyle(r.name)}>
+                        {r.name.trim().slice(0, 1) || '?'}
+                      </span>
+                    )}
                     <input className="resource-card__name" value={r.name} onChange={(e) => store.dispatch(editCharacter(r.id, updateCharacter(r, { name: e.target.value })))} />
                     <button type="button" className="resource-card__remove" aria-label="删除角色" onClick={() => store.dispatch(removeCharacter(r.id))}>×</button>
                   </header>
+                  <label className="resource-card__import">
+                    {r.image ? '更换立绘' : '导入立绘'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      hidden
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          void readFileAsDataUrl(file).then((url) => store.dispatch(editCharacter(r.id, updateCharacter(r, { image: url }))));
+                        }
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
                   <input className="resource-card__sub" value={r.alias ?? ''} placeholder="别名（可选）" onChange={(e) => store.dispatch(editCharacter(r.id, updateCharacter(r, { alias: e.target.value })))} />
                   <div className="resource-card__meta">
                     <label className="resource-card__field">
@@ -168,11 +218,28 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
               )}
               {state.resources.backgrounds.map((r) => (
                 <article className="resource-card" key={r.id}>
-                  <div className="resource-card__thumb">{r.name}</div>
+                  <div className="resource-card__thumb">
+                    {r.image ? <img src={r.image} alt={r.name} /> : <span>{r.name}</span>}
+                  </div>
                   <header className="resource-card__head">
                     <input className="resource-card__name" value={r.name} onChange={(e) => store.dispatch(editBackground(r.id, updateBackground(r, { name: e.target.value })))} />
                     <button type="button" className="resource-card__remove" aria-label="删除背景" onClick={() => store.dispatch(removeBackground(r.id))}>×</button>
                   </header>
+                  <label className="resource-card__import">
+                    {r.image ? '更换背景' : '导入背景'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      hidden
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          void readFileAsDataUrl(file).then((url) => store.dispatch(editBackground(r.id, updateBackground(r, { image: url }))));
+                        }
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
                   <div className="resource-card__meta">
                     <label className="resource-card__field">
                       <span>变体</span>
@@ -200,6 +267,22 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
                     <input className="resource-card__name" value={r.label} placeholder="标签（如片头曲）" onChange={(e) => store.dispatch(editAudio(r.id, updateAudio(r, { label: e.target.value })))} />
                     <button type="button" className="resource-card__remove" aria-label="删除音频" onClick={() => store.dispatch(removeAudio(r.id))}>×</button>
                   </header>
+                  {r.src && <audio className="resource-card__player" controls src={r.src} />}
+                  <label className="resource-card__import">
+                    {r.src ? '更换音频' : '导入音频'}
+                    <input
+                      type="file"
+                      accept="audio/*"
+                      hidden
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          void readFileAsDataUrl(file).then((url) => store.dispatch(editAudio(r.id, updateAudio(r, { src: url }))));
+                        }
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
                   <div className="resource-card__meta">
                     <label className="resource-card__field">
                       <span>类型</span>

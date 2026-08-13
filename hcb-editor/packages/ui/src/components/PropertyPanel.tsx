@@ -136,7 +136,12 @@ export function PropertyPanel({ state, store }: PropertyPanelProps) {
         <>
           <label className="pp__field">
             <span className="pp__label">背景</span>
-            <input className="pp__input" list="hcb-backgrounds" value={node.background} onChange={(e) => edit({ ...node, background: e.target.value })} />
+            <div className="pp__picker">
+              <input className="pp__input" list="hcb-backgrounds" value={node.background} onChange={(e) => edit({ ...node, background: e.target.value })} />
+              {state.resources.backgrounds.find((b) => b.name === node.background)?.image && (
+                <img className="pp__picker-thumb" src={state.resources.backgrounds.find((b) => b.name === node.background)!.image} alt={node.background} />
+              )}
+            </div>
           </label>
           <label className="pp__field">
             <span className="pp__label">变体编号</span>
@@ -229,7 +234,12 @@ export function PropertyPanel({ state, store }: PropertyPanelProps) {
         <>
           <label className="pp__field">
             <span className="pp__label">角色</span>
-            <input className="pp__input" list="hcb-speakers" value={node.character} onChange={(e) => edit({ ...node, character: e.target.value })} />
+            <div className="pp__picker">
+              <input className="pp__input" list="hcb-speakers" value={node.character} onChange={(e) => edit({ ...node, character: e.target.value })} />
+              {state.resources.characters.find((c) => c.name === node.character)?.image && (
+                <img className="pp__picker-thumb" src={state.resources.characters.find((c) => c.name === node.character)!.image} alt={node.character} />
+              )}
+            </div>
           </label>
           <label className="pp__field">
             <span className="pp__label">姿势 pose</span>

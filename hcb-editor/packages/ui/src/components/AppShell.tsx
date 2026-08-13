@@ -22,7 +22,7 @@ import { FlowCanvas, type FlowCanvasHandle } from '../flow/FlowCanvas.js';
 import { PreviewPanel } from '../preview/PreviewPanel.js';
 import type { CreatableNodeKind } from '../theme/meta.js';
 
-type RightView = 'property' | 'script' | 'timeline' | 'preview';
+type RightView = 'property' | 'script' | 'timeline';
 
 export function AppShell() {
   const { store, state } = useEditorStore();
@@ -152,62 +152,56 @@ const exportHcb = () => {
               <ol className="canvas-empty__steps">
                 <li>从左侧「节点」拖入一个节点（如台词 / 旁白）</li>
                 <li>从「开始」节点右侧的圆点拖线连到它 —— 只有从开始可达的节点才会纳入剧情</li>
-                <li>选中节点，在右侧「属性」里编辑内容</li>
-                <li>切到右侧「预览」查看演出效果</li>
+                <li>选中节点，在右下「属性」里编辑内容</li>
+                <li>右上角预览实时呈现演出效果</li>
               </ol>
             </div>
           )}
         </main>
 
         <section className="app__right">
-          <div className="app__tabs" role="tablist">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={rightView === 'property'}
-              className={`app__tab${rightView === 'property' ? ' app__tab--active' : ''}`}
-              onClick={() => setRightView('property')}
-            >
-              属性
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={rightView === 'script'}
-              className={`app__tab${rightView === 'script' ? ' app__tab--active' : ''}`}
-              onClick={() => setRightView('script')}
-            >
-              剧本
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={rightView === 'timeline'}
-              className={`app__tab${rightView === 'timeline' ? ' app__tab--active' : ''}`}
-              onClick={() => setRightView('timeline')}
-            >
-              时间线
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={rightView === 'preview'}
-              className={`app__tab${rightView === 'preview' ? ' app__tab--active' : ''}`}
-              onClick={() => setRightView('preview')}
-            >
-              预览
-            </button>
+          <div className="app__preview">
+            <PreviewPanel state={state} ratio={prefs.previewRatio} onLocate={locateNode} />
           </div>
-          <div className="app__right-content">
-            {rightView === 'property' ? (
-              <PropertyPanel state={state} store={store} />
-            ) : rightView === 'script' ? (
-              <ScriptTextView document={state.document} activeNodeId={state.selection.nodeId} onLocate={locateNode} />
-            ) : rightView === 'timeline' ? (
-              <TimelineView document={state.document} activeNodeId={state.selection.nodeId} onLocate={locateNode} />
-            ) : (
-              <PreviewPanel state={state} ratio={prefs.previewRatio} onLocate={locateNode} />
-            )}
+          <div className="app__info">
+            <div className="app__tabs" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={rightView === 'property'}
+                className={`app__tab${rightView === 'property' ? ' app__tab--active' : ''}`}
+                onClick={() => setRightView('property')}
+              >
+                属性
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={rightView === 'script'}
+                className={`app__tab${rightView === 'script' ? ' app__tab--active' : ''}`}
+                onClick={() => setRightView('script')}
+              >
+                剧本
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={rightView === 'timeline'}
+                className={`app__tab${rightView === 'timeline' ? ' app__tab--active' : ''}`}
+                onClick={() => setRightView('timeline')}
+              >
+                时间线
+              </button>
+            </div>
+            <div className="app__info-content">
+              {rightView === 'property' ? (
+                <PropertyPanel state={state} store={store} />
+              ) : rightView === 'script' ? (
+                <ScriptTextView document={state.document} activeNodeId={state.selection.nodeId} onLocate={locateNode} />
+              ) : (
+                <TimelineView document={state.document} activeNodeId={state.selection.nodeId} onLocate={locateNode} />
+              )}
+            </div>
           </div>
         </section>
       </div>

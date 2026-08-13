@@ -5,11 +5,15 @@
  * 真实立绘/CG 的 prim 语义由真实引擎回放补足，此处仅保证 FakeEngine 可驱动。
  */
 
-import { projectToIr, type EditorDocument } from '@hcb-editor/editor';
+import { projectToIr, type EditorDocument, type ProjectResources } from '@hcb-editor/editor';
 import type { IrHeader } from '@hcb-editor/hcb/ir';
 import type { FakePrim, FakeScript } from '@hcb-editor/rfvp';
 
-export function buildPreviewScript(document: EditorDocument, header: IrHeader): FakeScript {
+export function buildPreviewScript(
+  document: EditorDocument,
+  header: IrHeader,
+  resources?: ProjectResources,
+): FakeScript {
   const ir = projectToIr(document, header);
   const texts: { readonly text: string; readonly speaker?: string }[] = [];
   const prims: FakePrim[] = [];
@@ -34,6 +38,10 @@ export function buildPreviewScript(document: EditorDocument, header: IrHeader): 
       };
       if (node.character !== '') {
         prim.label = node.character;
+        const char = resources?.characters.find((c) => c.name === node.character);
+        if (char?.image) {
+          prim.image = char.image;
+        }
       }
       prims.push(prim);
       primId += 1;
