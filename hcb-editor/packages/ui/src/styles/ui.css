@@ -1885,7 +1885,6 @@
   border: 1px dashed var(--border-default);
   border-radius: 4px;
 }
-}
 
 .pose-tile__body {
   display: flex;
@@ -1975,7 +1974,6 @@
   color: #fff;
   background: rgba(0, 0, 0, 0.55);
   border-radius: 3px;
-}
 }
 
 /* ---------------------------------------------------------------- 资源工作台（双界面） */
@@ -2196,12 +2194,13 @@
   border: 2px solid var(--bg-raised);
   border-radius: 50%;
   background: var(--accent);
-  transition: transform 100ms ease, background 100ms ease;
+  /* 不覆盖 transform：React Flow 用 translate 把把手钉在节点边缘，覆盖会导致 hover 时把手跑位。 */
+  transition: background 100ms ease, border-color 100ms ease;
 }
 
 .react-flow__node .react-flow__handle:hover {
-  transform: scale(1.15);
   background: var(--accent-strong);
+  border-color: var(--accent);
 }
 
 /* ---------------------------------------------------------------- 节点右键菜单 */
