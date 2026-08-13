@@ -183,6 +183,16 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
     enqueue(items);
   };
 
+  /** 导入普通图片（PNG/JPG 等）：直接作为角色立绘候选。 */
+  const importImages = async (files: File[]): Promise<void> => {
+    const items: Omit<PendingResource, 'id' | 'checked'>[] = [];
+    for (const file of files) {
+      const url = await readFileAsDataUrl(file);
+      items.push({ kind: 'character', name: file.name.replace(/\.[^.]+$/, ''), dataUrl: url });
+    }
+    enqueue(items);
+  };
+
   /** 导入 hzc/nvsg 立绘：解码 → PNG data URL，进导入队列（.bin 归档按条目）。 */
   const importHzc = async (files: File[]): Promise<void> => {
     const items: Omit<PendingResource, 'id' | 'checked'>[] = [];
@@ -197,8 +207,11 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
           const img = await decodeHzc1(item.bytes);
           const url = rgbaToPngDataUrl(img.width, img.height, img.rgba);
           items.push({ kind: 'character', name: item.name.replace(/\.[^.]+$/, ''), dataUrl: url });
-        } catch {
-          // 非 hzc 图片条目跳过
+        } catch (err) {
+          // .bin 归档内允许混有非 hzc 条目，静默跳过；单文件失败则明确提示。
+          if (!isBin) {
+            window.alert(`hzc 解码失败：${err instanceof Error ? err.message : String(err)}`);
+          }
         }
       }
     }
@@ -232,11 +245,14 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
     setQueue((prev) => prev.map((q) => (q.id === id ? { ...q, checked: !q.checked } : q)));
   };
 
-  /** 拖拽导入：图片 → 角色候选，音频 → 音频候选。 */
+  /** 拖拽导入：普通图片/hzc/bin → 立绘候选，音频 → 音频候选。 */
   const onDropFiles = (files: File[]): void => {
-    const images = files.filter((f) => f.type.startsWith('image/') || /\.(hzc1|bin)$/i.test(f.name));
+    const hzcFiles = files.filter((f) => /\.(hzc1|bin)$/i.test(f.name));
+    const plainImages = files.filter((f) => f.type.startsWith('image/') && !/\.(hzc1|bin)$/i.test(f.name));
     const audios = files.filter((f) => f.type.startsWith('audio/'));
-    void importHzc(images).then(() => importAudios(audios));
+    void importImages(plainImages);
+    void importHzc(hzcFiles);
+    void importAudios(audios);
   };
 
   return (
@@ -534,15 +550,17 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
                 + 添加角色
               </button>
               <label className="btn btn--secondary">
-                导入 hzc/bin 立绘
+                导入立绘（图片 / hzc / bin）
                 <input
                   type="file"
-                  accept=".hzc1,.bin"
+                  accept="image/*,.hzc1,.bin"
                   multiple
                   hidden
                   onChange={(e) => {
                     const files = Array.from(e.target.files ?? []);
-                    void importHzc(files);
+                    const hzc = files.filter((f) => /\.(hzc1|bin)$/i.test(f.name));
+                    const images = files.filter((f) => !/\.(hzc1|bin)$/i.test(f.name));
+                    void importHzc(hzc).then(() => importImages(images));
                     e.target.value = '';
                   }}
                 />
