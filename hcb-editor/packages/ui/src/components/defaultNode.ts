@@ -10,6 +10,7 @@ import {
   bssetNode,
   commentNode,
   diaNode,
+  jumpNode,
   labelNode,
   selsetNode,
   speakNode,
@@ -37,6 +38,8 @@ export function defaultNode(kind: CreatableNodeKind): IrNode {
       return branchNode({ op: 'eq', a: 0, b: 0 }, '', '');
     case 'thread':
       return threadNode(0, '');
+    case 'jump':
+      return jumpNode('');
     case 'comment':
       return commentNode('');
   }

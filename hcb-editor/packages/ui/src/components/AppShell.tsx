@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
 import { deserializeProject, serializeProject } from '@hcb-editor/editor';
+import { openTextFile, saveBinaryFile, saveTextFile } from '../fileDialog.js';
 import { loadBaseBinary } from '../preview/baseBinary.js';
 import { compileEditorState } from '../preview/compileFromState.js';
 import { useEditorStore } from '../store/useEditorStore.js';
@@ -56,37 +57,32 @@ export function AppShell() {
   const locateNode = (nodeId: string) => {
     flowRef.current?.locate(nodeId);
   };
+const saveProject = () => {
+  void saveTextFile('project.hcbproj.json', serializeProject(state));
+};
 
-  const saveProject = () => {
-    const text = serializeProject(state);
-    const blob = new Blob([text], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = 'project.hcbproj.json';
-    anchor.click();
-    URL.revokeObjectURL(url);
-  };
+const openProject = (file: File) => {
+  void file.text().then((text) => {
+    store.load(deserializeProject(text));
+  });
+};
 
-  const openProject = (file: File) => {
-    void file.text().then((text) => {
-      store.load(deserializeProject(text));
-    });
-  };
+const openProjectDialog = () => {
+  void openTextFile().then((picked) => {
+    if (picked) {
+      store.load(deserializeProject(picked.text));
+    } else {
+      fileInputRef.current?.click();
+    }
+  });
+};
+
 const exportHcb = () => {
   void (async () => {
     try {
       const baseData = await loadBaseBinary(state.header.game);
       const bytes = compileEditorState(state, baseData);
-      const buffer = new ArrayBuffer(bytes.length);
-      new Uint8Array(buffer).set(bytes);
-      const blob = new Blob([buffer], { type: 'application/octet-stream' });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = 'project.hcb';
-      anchor.click();
-      URL.revokeObjectURL(url);
+      await saveBinaryFile('project.hcb', bytes);
       if (!baseData) {
         window.alert('已导出脚本-only 产物（不含底座库，不可独立运行）。请在 Electron 中配置底座游戏 HCB 以导出可运行 .hcb。');
       }
@@ -112,7 +108,7 @@ const exportHcb = () => {
           <button type="button" className="topbar-btn" onClick={saveProject}>
             保存工程
           </button>
-          <button type="button" className="topbar-btn" onClick={() => fileInputRef.current?.click()}>
+          <button type="button" className="topbar-btn" onClick={openProjectDialog}>
             打开工程
           </button>
           <input

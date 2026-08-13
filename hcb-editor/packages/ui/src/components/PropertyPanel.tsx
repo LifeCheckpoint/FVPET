@@ -299,6 +299,13 @@ export function PropertyPanel({ state, store }: PropertyPanelProps) {
         </>
       )}
 
+      {node.kind === 'jump' && (
+        <div className="pp__field">
+          <span className="pp__label">目标 label</span>
+          <div className="pp__readonly">{node.target || '（由流程图连线决定）'}</div>
+        </div>
+      )}
+
       {node.kind === 'raw' && (
         <div className="pp__field">
           <span className="pp__label">未识别演出块</span>

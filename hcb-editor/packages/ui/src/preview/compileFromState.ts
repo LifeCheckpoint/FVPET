@@ -8,9 +8,14 @@
 
 import { compileProject, type CompileProjectOptions } from '@hcb-editor/compiler';
 import { projectToIr, type EditorState } from '@hcb-editor/editor';
+import { formatIssues, validateIr } from '@hcb-editor/hcb/validate';
 
 export function compileEditorState(state: EditorState, baseData: Uint8Array | null): Uint8Array {
   const ir = projectToIr(state.document, state.header);
+  const issues = validateIr(ir);
+  if (issues.length > 0) {
+    throw new Error(formatIssues(issues));
+  }
   const extraCharacters = state.resources.characters
     .filter((c) => c.speakFn === null)
     .map((c) => c.name);

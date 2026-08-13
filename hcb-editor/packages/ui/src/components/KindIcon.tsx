@@ -75,6 +75,12 @@ export function KindIcon({ kind }: { readonly kind: IrNode['kind'] }) {
           <path d="M8 2.5v11M8 7.5 3.5 4.5M8 7.5l4.5-3" />
         </svg>
       );
+    case 'jump':
+      return (
+        <svg {...iconProps}>
+          <path d="M3 8h10M9.5 4.5 13 8l-3.5 3.5" />
+        </svg>
+      );
     case 'raw':
       return (
         <svg {...iconProps}>

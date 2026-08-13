@@ -43,6 +43,8 @@ export function summarizeNode(node: IrNode): NodeSummary {
       return { primary: renderCond(node.cond), secondary: nodeKindLabel('branch') };
     case 'thread':
       return { primary: `slot ${node.slot}`, secondary: nodeKindLabel('thread') };
+    case 'jump':
+      return { primary: node.target || '？', secondary: nodeKindLabel('jump') };
     case 'raw':
       return { primary: `${node.bytes.byteLength} 字节`, secondary: nodeKindLabel('raw') };
     case 'comment':

@@ -85,6 +85,8 @@ function EditorFlowNode(props: NodeProps<EditorNode>) {
         </>
       ) : kind === 'thread' ? (
         <Handle type="source" position={Position.Right} id="thread" />
+      ) : kind === 'jump' ? (
+        <Handle type="source" position={Position.Right} id="jump" />
       ) : (
         <Handle type="source" position={Position.Right} />
       )}
@@ -155,7 +157,9 @@ export const FlowCanvas = forwardRef<FlowCanvasHandle, FlowCanvasProps>(function
             ? 'else'
             : connection.sourceHandle === 'thread'
               ? 'thread'
-              : 'next';
+              : connection.sourceHandle === 'jump'
+                ? 'jump'
+                : 'next';
       try {
         store.dispatch(connectNodes(connection.source, connection.target, kind));
       } catch {

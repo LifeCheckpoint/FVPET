@@ -24,6 +24,7 @@ export const NODE_KIND_META: readonly NodeKindMeta[] = [
   { kind: 'audio', label: '音频', hint: 'BGM / 语音 / 音效' },
   { kind: 'branch', label: '分支', hint: '条件跳转' },
   { kind: 'thread', label: '线程', hint: '启动并行线程' },
+  { kind: 'jump', label: '跳转', hint: '无条件跳转到标签' },
   { kind: 'comment', label: '注释', hint: '编译时丢弃' },
 ];
 
