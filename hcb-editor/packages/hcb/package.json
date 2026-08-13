@@ -9,7 +9,8 @@
     "./core": "./src/core/index.ts",
     "./ir": "./src/ir/index.ts",
     "./decompile": "./src/decompile/index.ts",
-    "./syscalls": "./src/syscalls/index.ts"
+    "./syscalls": "./src/syscalls/index.ts",
+    "./validate": "./src/validate/index.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
