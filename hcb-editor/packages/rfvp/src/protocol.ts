@@ -22,7 +22,12 @@ export const RfvpRequest = z.discriminatedUnion('op', [
 export type RfvpRequest = z.infer<typeof RfvpRequest>;
 
 export const RfvpEvent = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('ready'), protocolVersion: z.number() }),
+  z.object({
+    type: z.literal('ready'),
+    protocolVersion: z.number(),
+    title: z.string().optional(),
+    screenSize: z.tuple([z.number(), z.number()]).optional(),
+  }),
   z.object({ type: z.literal('text'), slot: z.number(), text: z.string() }),
   z.object({ type: z.literal('waiting_text') }),
   z.object({ type: z.literal('audio'), channel: z.number(), action: z.enum(['load', 'play', 'stop']) }),
@@ -40,6 +45,8 @@ export const RfvpEvent = z.discriminatedUnion('type', [
         scale: z.number(),
         rotate: z.number(),
         blend: z.number(),
+        w: z.number().optional(),
+        h: z.number().optional(),
       }),
     ),
   }),

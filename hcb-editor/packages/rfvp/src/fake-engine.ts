@@ -19,8 +19,11 @@ export interface FakePrim {
   readonly scale: number;
   readonly rotate: number;
   readonly blend: number;
+  /** 可选宽高（真实引擎 draw_solid 的矩形尺寸；缺省时用占位尺寸绘制）。 */
+  w?: number | undefined;
+  h?: number | undefined;
   /** 可选显示标签（立绘占位显示角色名，真实引擎无此字段）。 */
-  label?: string;
+  label?: string | undefined;
 }
 
 export interface FakeScript {

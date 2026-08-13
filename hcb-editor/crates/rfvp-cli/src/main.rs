@@ -255,7 +255,7 @@ fn emit_prims(host: &mut CliHost, runtime: &mut PortableRuntime) {
         .solids
         .iter()
         .enumerate()
-        .map(|(i, (x, y, _w, _h, a))| {
+        .map(|(i, (x, y, w, h, a))| {
             json!({
                 "id": i,
                 "graphId": 0,
@@ -266,6 +266,8 @@ fn emit_prims(host: &mut CliHost, runtime: &mut PortableRuntime) {
                 "scale": 1,
                 "rotate": 0,
                 "blend": 0,
+                "w": w,
+                "h": h,
             })
         })
         .collect();
