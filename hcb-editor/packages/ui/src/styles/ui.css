@@ -1417,6 +1417,89 @@
   border-color: var(--accent);
 }
 
+.resource-card__import--sm {
+  width: 30px;
+  height: 22px;
+  font-size: 10.5px;
+}
+
+.resource-card__poses {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 0;
+  border-top: 1px dashed var(--border-default);
+}
+
+.resource-card__poses-title {
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
+.resource-card__pose {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.resource-card__pose-img {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-default);
+}
+
+.resource-card__pose-empty {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  font-size: 9.5px;
+  color: var(--text-faint);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-sm);
+}
+
+.resource-card__pose-fields {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.resource-card__pose-fields input {
+  width: 100%;
+  min-width: 0;
+  height: 24px;
+  font-size: 11px;
+  color: var(--text-primary);
+  background: var(--bg-input, var(--bg-raised));
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 0 6px;
+}
+
+.resource-card__pose-add {
+  align-self: flex-start;
+  height: 24px;
+  padding: 0 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.resource-card__pose-add:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 .resource-card__player {
   width: 100%;
   height: 30px;

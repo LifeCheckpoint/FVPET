@@ -9,6 +9,22 @@ import { projectToIr, type EditorDocument, type ProjectResources } from '@hcb-ed
 import type { IrHeader } from '@hcb-editor/hcb/ir';
 import type { FakePrim, FakeScript } from '@hcb-editor/rfvp';
 
+/** 按 pose/costume/face 组合匹配立绘；未命中回退默认立绘。 */
+function characterImageAt(
+  resources: ProjectResources | undefined,
+  name: string,
+  pose: number,
+  costume: number,
+  face: number,
+): string | undefined {
+  const char = resources?.characters.find((c) => c.name === name);
+  if (!char) {
+    return undefined;
+  }
+  const matched = char.poses?.find((p) => p.pose === pose && p.costume === costume && p.face === face);
+  return matched?.image ?? char.image;
+}
+
 export function buildPreviewScript(
   document: EditorDocument,
   header: IrHeader,
@@ -24,6 +40,24 @@ export function buildPreviewScript(
       texts.push({ text: node.text, speaker: node.speaker });
     } else if (node.kind === 'dia') {
       texts.push({ text: node.text });
+    } else if (node.kind === 'bgset') {
+      const bg = resources?.backgrounds.find((b) => b.name === node.background);
+      if (bg?.image) {
+        prims.push({
+          id: primId,
+          graphId: 0,
+          x: 0,
+          y: 0,
+          z: -10,
+          alpha: 1,
+          scale: 1,
+          rotate: 0,
+          blend: 0,
+          image: bg.image,
+          fullscreen: true,
+        });
+        primId += 1;
+      }
     } else if (node.kind === 'bsset') {
       const prim: FakePrim = {
         id: primId,
@@ -38,9 +72,9 @@ export function buildPreviewScript(
       };
       if (node.character !== '') {
         prim.label = node.character;
-        const char = resources?.characters.find((c) => c.name === node.character);
-        if (char?.image) {
-          prim.image = char.image;
+        const img = characterImageAt(resources, node.character, node.pose, node.costume, node.expression);
+        if (img) {
+          prim.image = img;
         }
       }
       prims.push(prim);

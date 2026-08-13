@@ -52,8 +52,8 @@ function drawPrims(
 ): void {
   app.stage.removeChildren().forEach((child) => child.destroy());
   for (const prim of prims) {
-    const w = prim.w && prim.w > 0 ? prim.w : PRIM_W;
-    const h = prim.h && prim.h > 0 ? prim.h : PRIM_H;
+    const w = prim.fullscreen ? app.screen.width : prim.w && prim.w > 0 ? prim.w : PRIM_W;
+    const h = prim.fullscreen ? app.screen.height : prim.h && prim.h > 0 ? prim.h : PRIM_H;
     if (prim.image) {
       const sprite = new Sprite(Texture.from(prim.image));
       sprite.width = w;

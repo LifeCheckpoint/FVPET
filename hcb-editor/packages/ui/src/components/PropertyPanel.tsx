@@ -236,9 +236,13 @@ export function PropertyPanel({ state, store }: PropertyPanelProps) {
             <span className="pp__label">角色</span>
             <div className="pp__picker">
               <input className="pp__input" list="hcb-speakers" value={node.character} onChange={(e) => edit({ ...node, character: e.target.value })} />
-              {state.resources.characters.find((c) => c.name === node.character)?.image && (
-                <img className="pp__picker-thumb" src={state.resources.characters.find((c) => c.name === node.character)!.image} alt={node.character} />
-              )}
+              {(() => {
+                const char = state.resources.characters.find((c) => c.name === node.character);
+                const img =
+                  char?.poses?.find((p) => p.pose === node.pose && p.costume === node.costume && p.face === node.expression)?.image ??
+                  char?.image;
+                return img ? <img className="pp__picker-thumb" src={img} alt={node.character} /> : null;
+              })()}
             </div>
           </label>
           <label className="pp__field">
@@ -279,7 +283,28 @@ export function PropertyPanel({ state, store }: PropertyPanelProps) {
           </label>
           <label className="pp__field">
             <span className="pp__label">编号</span>
-            <input className="pp__input" type="number" value={node.channelOrNum} onChange={(e) => edit({ ...node, channelOrNum: Number(e.target.value) })} />
+            <div className="pp__picker">
+              <input className="pp__input" type="number" value={node.channelOrNum} onChange={(e) => edit({ ...node, channelOrNum: Number(e.target.value) })} />
+              <select
+                className="pp__input"
+                value=""
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  if (Number.isFinite(n)) {
+                    edit({ ...node, channelOrNum: n });
+                  }
+                }}
+              >
+                <option value="">从资源选…</option>
+                {state.resources.audios
+                  .filter((a) => a.type === node.type)
+                  .map((a) => (
+                    <option key={a.id} value={a.number}>
+                      {a.label || `#${a.number}`}
+                    </option>
+                  ))}
+              </select>
+            </div>
           </label>
           <label className="pp__field pp__field--check">
             <span className="pp__label">循环</span>
