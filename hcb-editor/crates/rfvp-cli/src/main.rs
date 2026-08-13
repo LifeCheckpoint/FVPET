@@ -4,6 +4,7 @@
 //! 封装 `rfvp::portable::PortableRuntime`：boot 编译后的 HCB、tick VM、dump prim。
 //! 文本队列仍由编辑器投影提供（PortableRuntime 只暴露 prim/线程状态）。
 
+use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
 
 use rfvp::host_api::{
@@ -12,7 +13,7 @@ use rfvp::host_api::{
     RfvpFileInfo, RfvpFileSystem, RfvpHost, RfvpLogLevel, RfvpRenderer, RfvpResult, TextureDesc,
     TextureId, TextureRect,
 };
-use rfvp::portable::{Nls, PortableRuntime};
+use rfvp::portable::{Nls, PortableRuntime, Variant};
 use serde_json::{json, Value};
 
 // ---------------------------------------------------------------------------
@@ -248,6 +249,12 @@ fn emit_error(message: String) {
     emit(&json!({ "type": "error", "message": message }));
 }
 
+fn emit_audio_events(runtime: &mut PortableRuntime) {
+    for (channel, action) in runtime.drain_audio_events() {
+        emit(&json!({ "type": "audio", "channel": channel, "action": action }));
+    }
+}
+
 fn emit_prims(host: &mut CliHost, runtime: &mut PortableRuntime) {
     let _ = runtime.render_frame(host, 0);
     let prims: Vec<Value> = host
@@ -282,10 +289,46 @@ fn nls_from_str(s: Option<&str>) -> Nls {
     }
 }
 
+fn variant_to_json(value: &Variant) -> Value {
+    match value {
+        Variant::Nil => Value::Null,
+        Variant::True => json!(true),
+        Variant::Int(i) => json!(i),
+        Variant::Float(f) => json!(f),
+        Variant::String(s) | Variant::ConstString(s, _) => json!(s),
+        _ => Value::Null,
+    }
+}
+
+fn json_to_variant(value: &Value) -> Variant {
+    match value {
+        Value::Null => Variant::Nil,
+        Value::Bool(b) => {
+            if *b {
+                Variant::True
+            } else {
+                Variant::Nil
+            }
+        }
+        Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Variant::Int(i as i32)
+            } else if let Some(f) = n.as_f64() {
+                Variant::Float(f as f32)
+            } else {
+                Variant::Nil
+            }
+        }
+        Value::String(s) => Variant::String(s.clone()),
+        _ => Variant::Nil,
+    }
+}
+
 fn main() {
     let stdin = io::stdin();
     let mut host = CliHost::new();
     let mut runtime: Option<PortableRuntime> = None;
+    let mut labels: HashMap<String, u32> = HashMap::new();
 
     for line in stdin.lock().lines() {
         let line = match line {
@@ -316,6 +359,14 @@ fn main() {
                         Ok(rt) => {
                             let title = rt.title().to_string();
                             let (w, h) = rt.screen_size();
+                            labels.clear();
+                            if let Some(labels_obj) = req.get("labels").and_then(Value::as_object) {
+                                for (name, addr) in labels_obj {
+                                    if let Some(a) = addr.as_u64() {
+                                        labels.insert(name.clone(), a as u32);
+                                    }
+                                }
+                            }
                             runtime = Some(rt);
                             emit(&json!({
                                 "type": "ready",
@@ -328,6 +379,46 @@ fn main() {
                     },
                     Err(e) => emit_error(format!("read failed: {}", e)),
                 }
+            }
+            "jump" => {
+                let Some(rt) = runtime.as_mut() else {
+                    emit_error("not loaded".to_string());
+                    continue;
+                };
+                let label = req.get("label").and_then(Value::as_str).unwrap_or("");
+                match labels.get(label) {
+                    Some(addr) => {
+                        rt.jump_to(*addr);
+                        match rt.tick(&mut host, 16) {
+                            Ok(_) => {
+                                emit_prims(&mut host, rt);
+                                emit_audio_events(rt);
+                            }
+                            Err(e) => emit_error(format!("tick failed: {:?}", e)),
+                        }
+                    }
+                    None => emit_error(format!("unknown label: {}", label)),
+                }
+            }
+            "get_g" => {
+                let Some(rt) = runtime.as_ref() else {
+                    emit_error("not loaded".to_string());
+                    continue;
+                };
+                let index = req.get("index").and_then(Value::as_u64).unwrap_or(0) as u16;
+                let value = variant_to_json(&rt.get_global(index));
+                emit(&json!({ "type": "g", "index": index, "value": value }));
+            }
+            "set_g" => {
+                let Some(rt) = runtime.as_mut() else {
+                    emit_error("not loaded".to_string());
+                    continue;
+                };
+                let index = req.get("index").and_then(Value::as_u64).unwrap_or(0) as u16;
+                let value = json_to_variant(req.get("value").unwrap_or(&Value::Null));
+                rt.set_global(index, value);
+                let value = variant_to_json(&rt.get_global(index));
+                emit(&json!({ "type": "g", "index": index, "value": value }));
             }
             "advance" | "step" => {
                 let Some(rt) = runtime.as_mut() else {
@@ -344,6 +435,7 @@ fn main() {
                 match rt.tick(&mut host, 16) {
                     Ok(report) => {
                         emit_prims(&mut host, rt);
+                        emit_audio_events(rt);
                         if report.main_thread_exited {
                             emit(&json!({ "type": "done" }));
                         }
@@ -377,6 +469,7 @@ fn main() {
                     }
                 }
                 emit_prims(&mut host, rt);
+                emit_audio_events(rt);
                 if done {
                     emit(&json!({ "type": "done" }));
                 }

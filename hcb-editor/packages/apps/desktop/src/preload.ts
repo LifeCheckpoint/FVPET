@@ -14,8 +14,12 @@ interface RfvpLoadResult {
 }
 
 const rfvpApi = {
-  load: (bytes: Uint8Array, nls: string): Promise<RfvpLoadResult> =>
-    ipcRenderer.invoke('rfvp:load', { bytes, nls }),
+  load: (
+    bytes: Uint8Array,
+    nls: string,
+    labels?: Readonly<Record<string, number>>,
+  ): Promise<RfvpLoadResult> => ipcRenderer.invoke('rfvp:load', { bytes, nls, labels }),
+  jump: (label: string): Promise<void> => ipcRenderer.invoke('rfvp:jump', { label }),
   advance: (): Promise<void> => ipcRenderer.invoke('rfvp:advance'),
   step: (): Promise<void> => ipcRenderer.invoke('rfvp:step'),
   skip: (): Promise<void> => ipcRenderer.invoke('rfvp:skip'),

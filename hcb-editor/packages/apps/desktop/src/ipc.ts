@@ -93,6 +93,7 @@ export function registerBaseGameIpc(): void {
 interface RfvpLoadPayload {
   readonly bytes: Uint8Array;
   readonly nls: string;
+  readonly labels?: Readonly<Record<string, number>>;
 }
 
 export function registerRfvpIpc(manager: RfvpProcessManager): void {
@@ -109,7 +110,11 @@ export function registerRfvpIpc(manager: RfvpProcessManager): void {
   });
 
   ipcMain.handle('rfvp:load', (_event, payload: RfvpLoadPayload): Promise<RfvpLoadResult> => {
-    return manager.load(payload.bytes, payload.nls);
+    return manager.load(payload.bytes, payload.nls, payload.labels);
+  });
+
+  ipcMain.handle('rfvp:jump', (_event, payload: { label: string }) => {
+    manager.jump(payload.label);
   });
 
   ipcMain.handle('rfvp:advance', () => {

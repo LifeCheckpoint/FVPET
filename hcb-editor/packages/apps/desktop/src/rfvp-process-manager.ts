@@ -22,7 +22,10 @@ export interface RfvpLoadResult {
 /** 主进程只关心事件 type 做 load 关联与转发，完整 schema 校验交给渲染层 zod。 */
 type RawEvent = Record<string, unknown>;
 
+/** 与 [`protocol.ts`](hcb-editor/packages/rfvp/src/protocol.ts:8) 保持一致。 */
+const PROTOCOL_VERSION = 1;
 const LOAD_TIMEOUT_MS = 15_000;
+const HANDSHAKE_TIMEOUT_MS = 10_000;
 
 function resolveBinaryPath(): string {
   const override = process.env.HCB_RFVP_CLI;
@@ -40,6 +43,8 @@ export class RfvpProcessManager {
   private child: ChildProcessWithoutNullStreams | null = null;
   private readonly eventHandlers = new Set<(event: RawEvent) => void>();
   private readonly exitHandlers = new Set<(code: number | null) => void>();
+  /** 主动 shutdown 时置位，避免把正常退出误判为崩溃。 */
+  private shuttingDown = false;
 
   private tempDir: string | null = null;
   private loadWaiter: {
@@ -47,9 +52,14 @@ export class RfvpProcessManager {
     readonly reject: (error: Error) => void;
   } | null = null;
   private loadTimeout: NodeJS.Timeout | null = null;
+  private handshakeWaiter: {
+    readonly resolve: () => void;
+    readonly reject: (error: Error) => void;
+  } | null = null;
+  private handshakeTimeout: NodeJS.Timeout | null = null;
 
-  /** 确保子进程已启动（幂等）。二进制缺失时抛错。 */
-  start(): void {
+  /** 确保子进程已启动并完成 handshake（幂等）。二进制缺失或协议不匹配时抛错。 */
+  async start(): Promise<void> {
     if (this.child) {
       return;
     }
@@ -76,14 +86,33 @@ export class RfvpProcessManager {
     child.on('exit', (code) => {
       this.child = null;
       this.clearLoadWaiter(new Error('引擎进程已退出'));
+      this.clearHandshakeWaiter(new Error('引擎进程已退出'));
+      if (!this.shuttingDown) {
+        this.broadcastEvent({ type: 'error', message: '真实引擎进程异常退出，已自动回退演示引擎；下次编辑将自动重启引擎' });
+      }
+      this.shuttingDown = false;
       for (const handler of this.exitHandlers) {
         handler(code);
       }
     });
+
+    // 握手：校验 protocolVersion，失败则杀掉进程并抛错（下次 load 会重新拉起）。
+    const handshake = new Promise<void>((resolve, reject) => {
+      this.handshakeWaiter = { resolve, reject };
+      this.handshakeTimeout = setTimeout(() => {
+        this.clearHandshakeWaiter(new Error('引擎握手超时（protocolVersion 未确认）'));
+      }, HANDSHAKE_TIMEOUT_MS);
+    });
+    this.send({ op: 'handshake', protocolVersion: PROTOCOL_VERSION });
+    return handshake;
   }
 
-  async load(bytes: Uint8Array, nls: string): Promise<RfvpLoadResult> {
-    this.start();
+  async load(
+    bytes: Uint8Array,
+    nls: string,
+    labels?: Readonly<Record<string, number>>,
+  ): Promise<RfvpLoadResult> {
+    await this.start();
     const child = this.child;
     if (!child) {
       throw new Error('rfvp-cli 未就绪');
@@ -97,8 +126,12 @@ export class RfvpProcessManager {
         this.clearLoadWaiter(new Error('引擎装载超时'));
       }, LOAD_TIMEOUT_MS);
 
-      this.send({ op: 'load', hcbPath: file, nls });
+      this.send({ op: 'load', hcbPath: file, nls, labels: labels ?? {} });
     });
+  }
+
+  jump(label: string): void {
+    this.send({ op: 'jump', label });
   }
 
   advance(): void {
@@ -118,6 +151,7 @@ export class RfvpProcessManager {
   }
 
   shutdown(): void {
+    this.shuttingDown = true;
     this.send({ op: 'shutdown' });
   }
 
@@ -137,7 +171,9 @@ export class RfvpProcessManager {
 
   /** 应用退出时：终止子进程并清理临时文件。 */
   dispose(): void {
+    this.shuttingDown = true;
     this.clearLoadWaiter(new Error('引擎已关闭'));
+    this.clearHandshakeWaiter(new Error('引擎已关闭'));
     this.child?.kill();
     this.child = null;
     if (this.tempDir) {
@@ -165,6 +201,12 @@ export class RfvpProcessManager {
       return;
     }
 
+    // handshake 响应 = 无 title 的 ready（load 的 ready 必带 title），只做版本校验、不广播。
+    if (event.type === 'ready' && !('title' in event)) {
+      this.resolveHandshakeWaiter(event);
+      return;
+    }
+
     if (this.loadWaiter) {
       if (event.type === 'ready') {
         this.resolveLoadWaiter(event);
@@ -175,6 +217,40 @@ export class RfvpProcessManager {
     }
 
     this.broadcastEvent(event);
+  }
+
+  private resolveHandshakeWaiter(event: RawEvent): void {
+    const waiter = this.handshakeWaiter;
+    if (!waiter) {
+      return;
+    }
+    if (event.protocolVersion !== PROTOCOL_VERSION) {
+      this.clearHandshakeWaiter(
+        new Error(`协议版本不匹配：引擎 ${String(event.protocolVersion)}，编辑器 ${PROTOCOL_VERSION}`),
+      );
+      return;
+    }
+    this.clearHandshakeWaiter(null);
+    waiter.resolve();
+  }
+
+  private clearHandshakeWaiter(error: Error | null): void {
+    const waiter = this.handshakeWaiter;
+    this.handshakeWaiter = null;
+    if (this.handshakeTimeout) {
+      clearTimeout(this.handshakeTimeout);
+      this.handshakeTimeout = null;
+    }
+    if (!waiter) {
+      return;
+    }
+    if (error) {
+      this.child?.kill();
+      this.child = null;
+      waiter.reject(error);
+    } else {
+      waiter.resolve();
+    }
   }
 
   private resolveLoadWaiter(event: RawEvent): void {
