@@ -280,6 +280,17 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
         setEngineMode('fake');
         return;
       }
+      // 真实引擎（无头 VM）对依赖底座库函数调用者栈帧的演出块无法正确执行：
+      // selset 的 sel_* / msgset 的 f_000349f1 会用 push_stack 负偏移读调用者局部变量，
+      // 而编辑器的平铺脚本无该栈帧 → 栈溢出 / 越界。出现这些节点时回退演示引擎。
+      const hasUnsupported = state.document.nodes.some(
+        (n) =>
+          n.id !== state.document.startNodeId && (n.node.kind === 'selset' || n.node.kind === 'msgset'),
+      );
+      if (hasUnsupported) {
+        setEngineMode('fake');
+        return;
+      }
       setEngineMode('real');
       void loadBaseBinary(state.header.game)
         .then((baseData) => {
