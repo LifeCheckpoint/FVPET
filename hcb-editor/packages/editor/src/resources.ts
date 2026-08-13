@@ -14,6 +14,8 @@ export interface CharacterResource {
   readonly pose: number;
   readonly costume: number;
   readonly face: number;
+  /** 立绘图片 data URL（导入后用于预览与属性面板缩略图）。 */
+  readonly image?: string;
 }
 
 export interface BackgroundResource {
@@ -22,6 +24,8 @@ export interface BackgroundResource {
   readonly variant: number;
   /** 底座游戏背景函数地址；新增资源为 null。 */
   readonly bgFn: number | null;
+  /** 背景图片 data URL。 */
+  readonly image?: string;
 }
 
 export interface AudioResource {
@@ -29,6 +33,8 @@ export interface AudioResource {
   readonly type: 'bgm' | 'voice' | 'se';
   readonly number: number;
   readonly label: string;
+  /** 音频 data URL（用于试听）。 */
+  readonly src?: string;
 }
 
 export interface ProjectResources {

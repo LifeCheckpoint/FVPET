@@ -18,6 +18,7 @@ const CharacterResourceSchema = z.object({
   pose: z.number(),
   costume: z.number(),
   face: z.number(),
+  image: z.string().optional(),
 });
 
 const BackgroundResourceSchema = z.object({
@@ -25,6 +26,7 @@ const BackgroundResourceSchema = z.object({
   name: z.string(),
   variant: z.number(),
   bgFn: z.number().nullable(),
+  image: z.string().optional(),
 });
 
 const AudioResourceSchema = z.object({
@@ -32,6 +34,7 @@ const AudioResourceSchema = z.object({
   type: z.enum(['bgm', 'voice', 'se']),
   number: z.number(),
   label: z.string(),
+  src: z.string().optional(),
 });
 
 const DocNodeJson = z.object({
@@ -45,7 +48,7 @@ const DocEdgeJson = z.object({
   id: z.string(),
   source: z.string(),
   target: z.string(),
-  kind: z.enum(['next', 'then', 'else', 'thread']),
+  kind: z.enum(['next', 'then', 'else', 'thread', 'jump']),
 });
 
 const ProjectFileJson = z.object({
@@ -102,27 +105,59 @@ export function deserializeProject(text: string): EditorState {
   // zod 的 optional 推断为 `string | undefined`，而 exactOptionalPropertyTypes 下
   // CharacterResource.alias 不允许显式 undefined，此处显式剥离。
   const characters = parsed.resources.characters.map((c) => {
-    const r = {
+    const r: {
+      id: string;
+      name: string;
+      speakFn: number | null;
+      pose: number;
+      costume: number;
+      face: number;
+      alias?: string;
+      image?: string;
+    } = {
       id: c.id,
       name: c.name,
       speakFn: c.speakFn,
       pose: c.pose,
       costume: c.costume,
       face: c.face,
-    } as { id: string; name: string; speakFn: number | null; pose: number; costume: number; face: number; alias?: string };
+    };
     if (c.alias !== undefined) {
       r.alias = c.alias;
+    }
+    if (c.image !== undefined) {
+      r.image = c.image;
+    }
+    return r;
+  });
+  const backgrounds = parsed.resources.backgrounds.map((b) => {
+    const r: { id: string; name: string; variant: number; bgFn: number | null; image?: string } = {
+      id: b.id,
+      name: b.name,
+      variant: b.variant,
+      bgFn: b.bgFn,
+    };
+    if (b.image !== undefined) {
+      r.image = b.image;
+    }
+    return r;
+  });
+  const audios = parsed.resources.audios.map((a) => {
+    const r: { id: string; type: 'bgm' | 'voice' | 'se'; number: number; label: string; src?: string } = {
+      id: a.id,
+      type: a.type,
+      number: a.number,
+      label: a.label,
+    };
+    if (a.src !== undefined) {
+      r.src = a.src;
     }
     return r;
   });
   return {
     header: parsed.header,
     document: { nodes, edges: parsed.document.edges, startNodeId: parsed.document.startNodeId },
-    resources: {
-      characters,
-      backgrounds: parsed.resources.backgrounds,
-      audios: parsed.resources.audios,
-    },
+    resources: { characters, backgrounds, audios },
     selection: parsed.selection,
     nextId: parsed.nextId,
   };
