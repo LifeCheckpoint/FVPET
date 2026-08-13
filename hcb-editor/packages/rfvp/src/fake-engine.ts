@@ -24,6 +24,8 @@ export interface FakePrim {
   h?: number | undefined;
   /** 可选显示标签（立绘占位显示角色名，真实引擎无此字段）。 */
   label?: string | undefined;
+  /** 可选立绘图片 data URL（资源管理器导入后用于预览真图）。 */
+  image?: string | undefined;
 }
 
 export interface FakeScript {
