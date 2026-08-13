@@ -24,6 +24,8 @@ import {
   type EditorState,
   type EditorStore,
 } from '@hcb-editor/editor';
+import { decodeHzc1 } from '../resources/hzc.js';
+import { parseBinArchive } from '../resources/bin.js';
 
 type Tab = 'characters' | 'backgrounds' | 'audios';
 
@@ -55,6 +57,21 @@ function readFileAsDataUrl(file: File): Promise<string> {
     reader.onerror = () => reject(reader.error ?? new Error('读取文件失败'));
     reader.readAsDataURL(file);
   });
+}
+
+/** RGBA 像素 → PNG data URL（浏览器 Canvas）。 */
+function rgbaToPngDataUrl(width: number, height: number, rgba: Uint8Array): string {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('无法创建 Canvas 2D 上下文');
+  }
+  const imageData = ctx.createImageData(width, height);
+  imageData.data.set(rgba);
+  ctx.putImageData(imageData, 0, 0);
+  return canvas.toDataURL('image/png');
 }
 
 function updateCharacter(r: CharacterResource, patch: {
@@ -145,6 +162,36 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
       const next = (maxByType.get(type) ?? 0) + 1;
       maxByType.set(type, next);
       store.dispatch(addAudio({ type, number: next, label: file.name.replace(/\.[^.]+$/, ''), src: url }));
+    }
+  };
+
+  /** 导入 hzc/nvsg 立绘：解码 → PNG data URL → 建为角色（.bin 归档按条目批量导入）。 */
+  const importHzc = async (files: File[]): Promise<void> => {
+    for (const file of files) {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const isBin = file.name.toLowerCase().endsWith('.bin');
+      const items = isBin
+        ? parseBinArchive(bytes).map((e) => ({ name: e.name, bytes: e.bytes }))
+        : [{ name: file.name, bytes }];
+      for (const item of items) {
+        try {
+          const img = await decodeHzc1(item.bytes);
+          const url = rgbaToPngDataUrl(img.width, img.height, img.rgba);
+          store.dispatch(
+            addCharacter({
+              name: item.name.replace(/\.[^.]+$/, ''),
+              speakFn: null,
+              pose: 0,
+              costume: 0,
+              face: 0,
+              image: url,
+              poses: [],
+            }),
+          );
+        } catch {
+          // 非 hzc 图片条目跳过
+        }
+      }
     }
   };
 
@@ -398,9 +445,25 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
 
         <footer className="workspace__footer">
           {tab === 'characters' && (
-            <button type="button" className="btn btn--secondary" onClick={() => store.dispatch(addCharacter({ name: '新角色', speakFn: null, pose: 0, costume: 0, face: 0, poses: [] }))}>
-              + 添加角色
-            </button>
+            <>
+              <button type="button" className="btn btn--secondary" onClick={() => store.dispatch(addCharacter({ name: '新角色', speakFn: null, pose: 0, costume: 0, face: 0, poses: [] }))}>
+                + 添加角色
+              </button>
+              <label className="btn btn--secondary">
+                导入 hzc/bin 立绘
+                <input
+                  type="file"
+                  accept=".hzc1,.bin"
+                  multiple
+                  hidden
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files ?? []);
+                    void importHzc(files);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+            </>
           )}
           {tab === 'backgrounds' && (
             <button type="button" className="btn btn--secondary" onClick={() => store.dispatch(addBackground({ name: '新背景', variant: 0, bgFn: null }))}>
