@@ -9,8 +9,9 @@
  */
 
 import type { Nls } from '@hcb-editor/hcb/core';
-import { decodeHcb, type HcbDecoded } from '@hcb-editor/hcb/decompile';
+import type { HcbDecoded } from '@hcb-editor/hcb/decompile';
 import type { FlatItem } from '../passes/assemble.js';
+import { decodeBaseCached } from '../passes/compile.js';
 import { encodeFlatItemsCode } from '../passes/encode.js';
 
 function stripSpace(s: string): string {
@@ -93,7 +94,7 @@ export function generateSpeakFunctions(
   baseCharacterCount: number,
   nls: Nls,
 ): { readonly bytes: Uint8Array; readonly addresses: ReadonlyMap<string, number> } {
-  const decoded = decodeHcb(baseData, nls);
+  const decoded = decodeBaseCached(baseData, nls);
   const baseCodeEnd = decoded.sysdesc.sysDescOffset;
 
   // 逐函数按绝对地址生成：startAddr 只影响体内 jmp/jz 目标值，不影响字节长度。

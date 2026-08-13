@@ -4,12 +4,25 @@
  */
 
 import { ByteWriter, serializeSysdesc, type HcbSysdesc, type Nls } from '@hcb-editor/hcb/core';
-import { decodeHcb } from '@hcb-editor/hcb/decompile';
+import { decodeHcb, type HcbDecoded } from '@hcb-editor/hcb/decompile';
 import type { IrScript } from '@hcb-editor/hcb/ir';
 import type { GameTables, TemplateCtx } from '../templates/types.js';
 import { assembleFlat } from './assemble.js';
 import { encodeFlatItems, encodeFlatItemsCode } from './encode.js';
 import { lower } from './lower.js';
+
+/** 底座二进制解码缓存：避免每次编译都重新解析 5MB 原版 HCB。 */
+const baseDecodeCache = new WeakMap<Uint8Array, HcbDecoded>();
+
+export function decodeBaseCached(baseData: Uint8Array, nls: Nls): HcbDecoded {
+  const cached = baseDecodeCache.get(baseData);
+  if (cached) {
+    return cached;
+  }
+  const decoded = decodeHcb(baseData, nls);
+  baseDecodeCache.set(baseData, decoded);
+  return decoded;
+}
 
 export interface CompileCtx {
   readonly sysdesc: HcbSysdesc;
@@ -34,7 +47,7 @@ export function compileWithBase(
   baseData: Uint8Array,
   extraFuncBytes: Uint8Array = new Uint8Array(0),
 ): Uint8Array {
-  const base = decodeHcb(baseData, ctx.nls);
+  const base = decodeBaseCached(baseData, ctx.nls);
   const baseCodeEnd = base.sysdesc.sysDescOffset;
   const baseCode = baseData.subarray(4, baseCodeEnd);
 

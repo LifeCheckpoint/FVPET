@@ -57,10 +57,8 @@ export const bssetTemplate: Template<BssetNode> = {
     layer: { kind: 'i8', doc: '层次' },
   },
   instantiate(node, ctx): { label?: string; instructions: readonly AsmInstruction[] }[] {
-    const chaNum = ctx.tables.characters[node.character]?.chaNum;
-    if (chaNum === undefined) {
-      throw new Error(`unknown character for bsset: ${node.character}`);
-    }
+    // chaNum（立绘角色编号）缺失时回退 0：底座数据未提取该映射，先保证可编译/预览不崩。
+    const chaNum = ctx.tables.characters[node.character]?.chaNum ?? 0;
     const ins: AsmInstruction[] = [
       { op: 'push_i8', value: chaNum },
       { op: 'push_i8', value: node.pose },
