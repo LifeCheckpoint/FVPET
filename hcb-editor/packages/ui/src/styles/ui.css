@@ -1686,7 +1686,7 @@
 
 .character-detail__grid {
   display: grid;
-  grid-template-columns: 240px 1fr;
+  grid-template-columns: 280px 1fr;
   gap: 14px;
   align-items: start;
 }
@@ -1745,12 +1745,13 @@
   color: var(--text-faint);
 }
 
-/* 立绘舞台 */
+/* 立绘舞台（竖版：立绘多为竖长图） */
 .character-detail__stage {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 280px;
+  aspect-ratio: 3 / 4.6;
+  min-height: 360px;
   background:
     linear-gradient(135deg, rgba(91, 156, 248, 0.06), rgba(91, 156, 248, 0) 60%),
     #0b0d10;
@@ -1760,8 +1761,8 @@
 }
 
 .character-detail__img {
-  max-width: 100%;
-  max-height: 380px;
+  width: 100%;
+  height: 100%;
   display: block;
   object-fit: contain;
 }
@@ -1841,10 +1842,9 @@
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
 }
-
 .pose-tile__img {
   width: 100%;
-  height: 120px;
+  aspect-ratio: 3 / 4;
   object-fit: contain;
   background: #0b0d10;
   border-radius: 4px;
@@ -1855,12 +1855,13 @@
   align-items: center;
   justify-content: center;
   width: 100%;
-  height: 120px;
+  aspect-ratio: 3 / 4;
   font-size: 11px;
   color: var(--text-faint);
   background: var(--bg-surface);
   border: 1px dashed var(--border-default);
   border-radius: 4px;
+}
 }
 
 .pose-tile__body {
@@ -1902,39 +1903,56 @@
 .pose-tile__field input:focus {
   border-color: var(--border-accent);
 }
-
-.pose-tile__actions {
+/* 表情切片（第三级：附属于某个姿势/服装） */
+.pose-tile__faces {
   display: flex;
+  flex-direction: column;
   gap: 6px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border-default);
 }
 
-.pose-tile__action {
-  flex: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 24px;
-  font-size: 11px;
-  color: var(--text-secondary);
-  background: transparent;
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: color 120ms ease, border-color 120ms ease;
-}
-
-.pose-tile__action:hover {
-  color: var(--accent);
-  border-color: var(--accent);
-}
-
-.pose-tile__action--danger {
+.pose-tile__faces-title {
+  font-size: 10px;
   color: var(--text-faint);
 }
 
-.pose-tile__action--danger:hover {
-  color: var(--danger);
-  border-color: var(--danger);
+.face-thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.face-thumb {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 4px;
+  border: 1px solid var(--border-default);
+  background: #0b0d10;
+}
+
+.face-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.face-thumb__num {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  padding: 0 3px;
+  font-size: 8.5px;
+  line-height: 12px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 3px;
+}
 }
 
 /* ---------------------------------------------------------------- 资源工作台（双界面） */

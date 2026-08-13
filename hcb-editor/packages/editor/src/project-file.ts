@@ -10,11 +10,22 @@ import type { EditorState } from './state.js';
 
 export const PROJECT_FILE_SCHEMA_VERSION = 1 as const;
 
+const CharacterFaceSchema = z.object({
+  face: z.number(),
+  image: z.string(),
+});
+
 const CharacterPoseSchema = z.object({
   pose: z.number(),
   costume: z.number(),
-  face: z.number(),
   image: z.string(),
+  faces: z.array(CharacterFaceSchema).default([]),
+  faceX: z.number().optional(),
+  faceY: z.number().optional(),
+  faceWidth: z.number().optional(),
+  faceHeight: z.number().optional(),
+  bodyWidth: z.number().optional(),
+  bodyHeight: z.number().optional(),
 });
 
 const CharacterResourceSchema = z.object({
@@ -126,7 +137,18 @@ export function deserializeProject(text: string): EditorState {
       builtin?: boolean;
       chaNum?: number;
       image?: string;
-      poses?: { pose: number; costume: number; face: number; image: string }[];
+      poses?: {
+        pose: number;
+        costume: number;
+        image: string;
+        faces: { face: number; image: string }[];
+        faceX?: number;
+        faceY?: number;
+        faceWidth?: number;
+        faceHeight?: number;
+        bodyWidth?: number;
+        bodyHeight?: number;
+      }[];
     } = {
       id: c.id,
       name: c.name,
@@ -148,7 +170,32 @@ export function deserializeProject(text: string): EditorState {
       r.image = c.image;
     }
     if (c.poses !== undefined) {
-      r.poses = c.poses;
+      r.poses = c.poses.map((p) => {
+        const pose: {
+          pose: number;
+          costume: number;
+          image: string;
+          faces: { face: number; image: string }[];
+          faceX?: number;
+          faceY?: number;
+          faceWidth?: number;
+          faceHeight?: number;
+          bodyWidth?: number;
+          bodyHeight?: number;
+        } = {
+          pose: p.pose,
+          costume: p.costume,
+          image: p.image,
+          faces: p.faces.map((f) => ({ face: f.face, image: f.image })),
+        };
+        if (p.faceX !== undefined) pose.faceX = p.faceX;
+        if (p.faceY !== undefined) pose.faceY = p.faceY;
+        if (p.faceWidth !== undefined) pose.faceWidth = p.faceWidth;
+        if (p.faceHeight !== undefined) pose.faceHeight = p.faceHeight;
+        if (p.bodyWidth !== undefined) pose.bodyWidth = p.bodyWidth;
+        if (p.bodyHeight !== undefined) pose.bodyHeight = p.bodyHeight;
+        return pose;
+      });
     }
     return r;
   });

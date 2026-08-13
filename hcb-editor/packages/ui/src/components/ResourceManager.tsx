@@ -11,15 +11,12 @@ import {
   addAudio,
   addAudios,
   addBackground,
-  addCharacter,
-  addCharacters,
   editAudio,
   editBackground,
   editCharacter,
   editCharacters,
   removeAudio,
   removeBackground,
-  removeCharacter,
   type AudioResource,
   type BackgroundResource,
   type CharacterPose,
@@ -27,16 +24,13 @@ import {
   type EditorState,
   type EditorStore,
 } from '@hcb-editor/editor';
-import { decodeHzc1, rgbaToPngDataUrl } from '../resources/hzc.js';
-import { parseBinArchive } from '../resources/bin.js';
 import { importGraphBsFile } from '../resources/graph-bs.js';
 
 type Tab = 'characters' | 'backgrounds' | 'audios';
 
-/** 导入队列候选（预览 + 勾选 + 一次性提交）。 */
+/** 音频导入队列候选（预览 + 勾选 + 一次性提交）。 */
 interface PendingResource {
   readonly id: string;
-  readonly kind: 'character' | 'audio';
   readonly name: string;
   readonly dataUrl: string;
   checked: boolean;
@@ -141,8 +135,9 @@ function updateAudio(r: AudioResource, patch: {
 
 /** 角色统计卡片（列表视图）：缩略图 + 名称 + 统计数字，点击进入详情。 */
 function CharacterStatCard({ r, onOpen }: { readonly r: CharacterResource; readonly onOpen: () => void }) {
-  const poseCount = (r.poses ?? []).length;
-  const stats: string[] = [`表情集 ${poseCount}`];
+  const poses = r.poses ?? [];
+  const faceCount = poses.reduce((sum, p) => sum + p.faces.length, 0);
+  const stats: string[] = [`姿势/服装 ${poses.length}`, `表情 ${faceCount}`];
   if (r.image) {
     stats.push('立绘 ✓');
   }
@@ -202,11 +197,6 @@ function CharacterDetail({ r, store, onBack }: {
           <h2 className="character-detail__title">{r.name}</h2>
           {r.builtin && <span className="resource-card__badge">内置</span>}
         </div>
-        {!r.builtin && (
-          <button type="button" className="character-detail__delete" onClick={() => store.dispatch(removeCharacter(r.id))}>
-            删除角色
-          </button>
-        )}
       </header>
 
       <div className="character-detail__grid">
@@ -281,24 +271,19 @@ function CharacterDetail({ r, store, onBack }: {
       <section className="detail-section">
         <div className="detail-section__head">
           <h3 className="detail-section__title">
-            表情集 <span className="detail-section__count">{poses.length}</span>
+            立绘集
+            <span className="detail-section__count">{poses.length} 组合</span>
+            <span className="detail-section__count">{poses.reduce((s, p) => s + p.faces.length, 0)} 表情</span>
           </h3>
-          <button
-            type="button"
-            className="btn btn--secondary"
-            onClick={() => store.dispatch(editCharacter(r.id, updateCharacter(r, { poses: [...poses, { pose: r.pose, costume: r.costume, face: r.face, image: r.image ?? '' }] })))}
-          >
-            + 添加表情
-          </button>
         </div>
         {poses.length === 0 ? (
-          <p className="detail-section__empty">尚未配置表情集，点击「添加表情」开始。</p>
+          <p className="detail-section__empty">尚未导入立绘，点击下方「导入内置立绘文件」。</p>
         ) : (
           <div className="pose-grid">
             {poses.map((p, i) => (
               <div className="pose-tile" key={i}>
                 {p.image ? (
-                  <img className="pose-tile__img" src={p.image} alt={`${r.name} ${p.pose}/${p.costume}/${p.face}`} />
+                  <img className="pose-tile__img" src={p.image} alt={`${r.name} 姿势${p.pose}/服装${p.costume}`} />
                 ) : (
                   <span className="pose-tile__empty">无图</span>
                 )}
@@ -312,31 +297,20 @@ function CharacterDetail({ r, store, onBack }: {
                       <span>服装</span>
                       <input type="number" value={p.costume} onChange={(e) => setPose(i, { costume: Number(e.target.value) })} />
                     </label>
-                    <label className="pose-tile__field">
-                      <span>表情</span>
-                      <input type="number" value={p.face} onChange={(e) => setPose(i, { face: Number(e.target.value) })} />
-                    </label>
                   </div>
-                  <div className="pose-tile__actions">
-                    <label className="pose-tile__action">
-                      换图
-                      <input
-                        type="file"
-                        accept="image/*"
-                        hidden
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            void readFileAsDataUrl(file).then((url) => setPose(i, { image: url }));
-                          }
-                          e.target.value = '';
-                        }}
-                      />
-                    </label>
-                    <button type="button" className="pose-tile__action pose-tile__action--danger" onClick={() => store.dispatch(editCharacter(r.id, updateCharacter(r, { poses: poses.filter((_, j) => j !== i) })))}>
-                      移除
-                    </button>
-                  </div>
+                  {p.faces.length > 0 && (
+                    <div className="pose-tile__faces">
+                      <span className="pose-tile__faces-title">表情</span>
+                      <div className="face-thumbs">
+                        {p.faces.map((f) => (
+                          <span className="face-thumb" key={f.face} title={`表情 ${f.face}`}>
+                            <img src={f.image} alt={`表情 ${f.face}`} />
+                            <span className="face-thumb__num">{f.face}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -379,52 +353,7 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
       const items: Omit<PendingResource, 'id' | 'checked'>[] = [];
       for (const file of files) {
         const url = await readFileAsDataUrl(file);
-        items.push({ kind: 'audio', name: file.name.replace(/\.[^.]+$/, ''), dataUrl: url });
-      }
-      enqueue(items);
-    } finally {
-      setImportingCount((c) => c - 1);
-    }
-  };
-
-  /** 导入普通图片（PNG/JPG 等）：直接作为角色立绘候选。 */
-  const importImages = async (files: File[]): Promise<void> => {
-    setImportingCount((c) => c + 1);
-    try {
-      const items: Omit<PendingResource, 'id' | 'checked'>[] = [];
-      for (const file of files) {
-        const url = await readFileAsDataUrl(file);
-        items.push({ kind: 'character', name: file.name.replace(/\.[^.]+$/, ''), dataUrl: url });
-      }
-      enqueue(items);
-    } finally {
-      setImportingCount((c) => c - 1);
-    }
-  };
-
-  /** 导入 hzc/nvsg 立绘：解码 → PNG data URL，进导入队列（.bin 归档按条目）。 */
-  const importHzc = async (files: File[]): Promise<void> => {
-    setImportingCount((c) => c + 1);
-    try {
-      const items: Omit<PendingResource, 'id' | 'checked'>[] = [];
-      for (const file of files) {
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        const isBin = file.name.toLowerCase().endsWith('.bin');
-        const entries = isBin
-          ? parseBinArchive(bytes).map((e) => ({ name: e.name, bytes: e.bytes }))
-          : [{ name: file.name, bytes }];
-        for (const item of entries) {
-          try {
-            const img = await decodeHzc1(item.bytes);
-            const url = rgbaToPngDataUrl(img.width, img.height, img.rgba);
-            items.push({ kind: 'character', name: item.name.replace(/\.[^.]+$/, ''), dataUrl: url });
-          } catch (err) {
-            // .bin 归档内允许混有非 hzc 条目，静默跳过；单文件失败则明确提示。
-            if (!isBin) {
-              window.alert(`hzc 解码失败：${err instanceof Error ? err.message : String(err)}`);
-            }
-          }
-        }
+        items.push({ name: file.name.replace(/\.[^.]+$/, ''), dataUrl: url });
       }
       enqueue(items);
     } finally {
@@ -435,23 +364,15 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
   /** 一次性提交导入队列（勾选项 → 一次 undo 步）。 */
   const commitQueue = (): void => {
     const selected = queue.filter((q) => q.checked);
-    const characters = selected
-      .filter((q) => q.kind === 'character')
-      .map((q) => ({ name: q.name, speakFn: null, pose: 0, costume: 0, face: 0, image: q.dataUrl, poses: [] }));
-    const audios = selected
-      .filter((q) => q.kind === 'audio')
-      .map((q) => ({ type: 'bgm' as const, number: 0, label: q.name, src: q.dataUrl }));
-    if (characters.length > 0) {
-      store.dispatch(addCharacters(characters));
+    if (selected.length === 0) {
+      return;
     }
-    if (audios.length > 0) {
-      const maxByType = new Map<string, number>();
-      for (const a of state.resources.audios) {
-        maxByType.set(a.type, Math.max(maxByType.get(a.type) ?? 0, a.number));
-      }
-      let next = maxByType.get('bgm') ?? 0;
-      store.dispatch(addAudios(audios.map((a) => ({ ...a, number: ++next }))));
+    const maxByType = new Map<string, number>();
+    for (const a of state.resources.audios) {
+      maxByType.set(a.type, Math.max(maxByType.get(a.type) ?? 0, a.number));
     }
+    let next = maxByType.get('bgm') ?? 0;
+    store.dispatch(addAudios(selected.map((q) => ({ type: 'bgm' as const, number: ++next, label: q.name, src: q.dataUrl }))));
     setQueue((prev) => prev.filter((q) => !selected.includes(q)));
   };
 
@@ -459,13 +380,9 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
     setQueue((prev) => prev.map((q) => (q.id === id ? { ...q, checked: !q.checked } : q)));
   };
 
-  /** 拖拽导入：普通图片/hzc/bin → 立绘候选，音频 → 音频候选。 */
+  /** 拖拽导入：仅音频（角色立绘只通过「导入内置立绘文件」进入）。 */
   const onDropFiles = (files: File[]): void => {
-    const hzcFiles = files.filter((f) => /\.(hzc1|bin)$/i.test(f.name));
-    const plainImages = files.filter((f) => f.type.startsWith('image/') && !/\.(hzc1|bin)$/i.test(f.name));
     const audios = files.filter((f) => f.type.startsWith('audio/'));
-    void importImages(plainImages);
-    void importHzc(hzcFiles);
     void importAudios(audios);
   };
 
@@ -572,11 +489,7 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
                 {queue.map((q) => (
                   <label className="import-queue__item" key={q.id}>
                     <input type="checkbox" checked={q.checked} onChange={() => toggleQueueItem(q.id)} />
-                    {q.kind === 'character' ? (
-                      <img className="import-queue__thumb" src={q.dataUrl} alt={q.name} />
-                    ) : (
-                      <span className="import-queue__badge">音频</span>
-                    )}
+                    <span className="import-queue__badge">音频</span>
                     <span className="import-queue__name">{q.name}</span>
                   </label>
                 ))}
@@ -589,7 +502,7 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
             ) : (
               <div className="resource-grid resource-grid--cards">
                 {state.resources.characters.length === 0 && (
-                  <div className="resource-empty">还没有角色，点击下方「添加角色」。</div>
+                  <div className="resource-empty">尚未导入内置立绘，点击下方「导入内置立绘文件」。</div>
                 )}
                 {state.resources.characters.map((r) => (
                   <CharacterStatCard key={r.id} r={r} onOpen={() => setOpenCharId(r.id)} />
@@ -692,42 +605,21 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
 
         <footer className="workspace__footer">
           {tab === 'characters' && (
-            <>
-              <button type="button" className="btn btn--secondary" onClick={() => store.dispatch(addCharacter({ name: '新角色', speakFn: null, pose: 0, costume: 0, face: 0, poses: [] }))}>
-                + 添加角色
-              </button>
-              <label className="btn btn--secondary">
-                导入立绘（图片 / hzc / bin）
-                <input
-                  type="file"
-                  accept="image/*,.hzc1,.bin"
-                  multiple
-                  hidden
-                  onChange={(e) => {
-                    const files = Array.from(e.target.files ?? []);
-                    const hzc = files.filter((f) => /\.(hzc1|bin)$/i.test(f.name));
-                    const images = files.filter((f) => !/\.(hzc1|bin)$/i.test(f.name));
-                    void importHzc(hzc).then(() => importImages(images));
-                    e.target.value = '';
-                  }}
-                />
-              </label>
-              <label className="btn btn--secondary">
-                导入内置立绘文件
-                <input
-                  type="file"
-                  accept=".bin"
-                  hidden
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      void importBuiltinSprites(file);
-                    }
-                    e.target.value = '';
-                  }}
-                />
-              </label>
-            </>
+            <label className="btn btn--secondary">
+              导入内置立绘文件
+              <input
+                type="file"
+                accept=".bin"
+                hidden
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    void importBuiltinSprites(file);
+                  }
+                  e.target.value = '';
+                }}
+              />
+            </label>
           )}
           {tab === 'backgrounds' && (
             <button type="button" className="btn btn--secondary" onClick={() => store.dispatch(addBackground({ name: '新背景', variant: 0, bgFn: null }))}>

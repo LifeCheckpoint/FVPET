@@ -103,7 +103,13 @@ export function serializeProjectToDir(state: EditorState): ProjectDirData {
           ...c,
           ...(image !== undefined ? { image } : {}),
           ...(c.poses !== undefined
-            ? { poses: c.poses.map((p) => ({ ...p, image: externalize(p.image) ?? p.image })) }
+            ? {
+                poses: c.poses.map((p) => ({
+                  ...p,
+                  image: externalize(p.image) ?? p.image,
+                  faces: p.faces.map((f) => ({ ...f, image: externalize(f.image) ?? f.image })),
+                })),
+              }
             : {}),
         };
       }),
@@ -149,7 +155,13 @@ export function deserializeProjectFromDir(
           ...c,
           ...(image !== undefined ? { image } : {}),
           ...(c.poses !== undefined
-            ? { poses: c.poses.map((p) => ({ ...p, image: inline(p.image) ?? p.image })) }
+            ? {
+                poses: c.poses.map((p) => ({
+                  ...p,
+                  image: inline(p.image) ?? p.image,
+                  faces: p.faces.map((f) => ({ ...f, image: inline(f.image) ?? f.image })),
+                })),
+              }
             : {}),
         };
       }),

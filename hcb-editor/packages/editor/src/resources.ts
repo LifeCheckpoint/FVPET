@@ -5,12 +5,31 @@
  * - 音频仅数据（syscall 编号直传，无函数生成）。
  */
 
-/** 立绘表情/姿势组合：同一角色可按 pose/costume/face 绑定不同图片。 */
+/** 替换表情切片：附属于某个「姿势 / 服装」立绘之下（第三级）。face=0 为 body 默认表情，不单独存图。 */
+export interface CharacterFace {
+  readonly face: number;
+  readonly image: string;
+}
+
+/**
+ * 立绘集：同一角色按「姿势 / 服装」绑定 body 立绘，表情作为其下第三级切片。
+ * - image：body 立绘（含默认表情 face=0）。
+ * - faces：替换表情（face >= 1），预览时按 faceX/faceY 叠加到 body 上。
+ */
 export interface CharacterPose {
   readonly pose: number;
   readonly costume: number;
-  readonly face: number;
   readonly image: string;
+  /** 替换表情（face >= 1）。与其余资源字段一致，使用可变数组以兼容 Immer draft。 */
+  readonly faces: CharacterFace[];
+  /** 表情切片在 body 上的叠加偏移（像素，相对 body 左上角）。 */
+  readonly faceX?: number;
+  readonly faceY?: number;
+  readonly faceWidth?: number;
+  readonly faceHeight?: number;
+  /** body 立绘原始像素尺寸（预览叠加表情时按比例缩放用）。 */
+  readonly bodyWidth?: number;
+  readonly bodyHeight?: number;
 }
 
 export interface CharacterResource {

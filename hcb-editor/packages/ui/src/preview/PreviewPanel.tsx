@@ -65,6 +65,21 @@ function drawPrims(
       sprite.scale.set(prim.scale);
       sprite.angle = prim.rotate;
       app.stage.addChild(sprite);
+
+      if (prim.face) {
+        const sx = prim.face.bodyWidth > 0 ? w / prim.face.bodyWidth : 1;
+        const sy = prim.face.bodyHeight > 0 ? h / prim.face.bodyHeight : 1;
+        const face = new Sprite(Texture.from(prim.face.image));
+        face.width = Math.max(1, prim.face.width * sx);
+        face.height = Math.max(1, prim.face.height * sy);
+        face.x = prim.x + prim.face.x * sx;
+        face.y = prim.y + prim.face.y * sy;
+        face.zIndex = prim.z + 0.5;
+        face.alpha = prim.alpha;
+        face.scale.set(prim.scale);
+        face.angle = prim.rotate;
+        app.stage.addChild(face);
+      }
     } else {
       const g = new Graphics();
       g.roundRect(prim.x, prim.y, w, h, 6);

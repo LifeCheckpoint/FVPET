@@ -238,9 +238,9 @@ export function PropertyPanel({ state, store }: PropertyPanelProps) {
               <input className="pp__input" list="hcb-speakers" value={node.character} onChange={(e) => edit({ ...node, character: e.target.value })} />
               {(() => {
                 const char = state.resources.characters.find((c) => c.name === node.character);
-                const img =
-                  char?.poses?.find((p) => p.pose === node.pose && p.costume === node.costume && p.face === node.expression)?.image ??
-                  char?.image;
+                const pose = char?.poses?.find((p) => p.pose === node.pose && p.costume === node.costume);
+                const faceImg = node.expression > 0 ? pose?.faces.find((f) => f.face === node.expression)?.image : undefined;
+                const img = faceImg ?? pose?.image ?? char?.image;
                 return img ? <img className="pp__picker-thumb" src={img} alt={node.character} /> : null;
               })()}
             </div>

@@ -6,15 +6,15 @@
  * - `<姿势>`：基 / 幼少基 / 喜 / 悲 …（角色站姿状态）
  * - `<服装>`：私服 / 制服 / メイド服 …（可含下划线，如 `私服_ネコ`）
  * - `L` / `U`：尺寸变体（同一立绘的缩放版），导入时忽略
- * - `_表情`：表情合成图（引擎切脸用图集），导入时忽略
+ * - `_表情`：Multi32Bit 表情切片集（entryCount 张人脸，按 offset 叠加到 body 上）
  *
- * 本模块只取「基础立绘」（无 L/U 后缀、非表情合成图），按角色归类，
- * 并把姿势/服装标签映射为稳定的数字索引，直接产出 CharacterPose[]。
+ * 本模块取「基础立绘」（无 L/U 后缀、非表情合成图）作为 body，
+ * 匹配同 (姿势, 服装) 的 `_表情` 切片集，产出层级化的 CharacterPose[]（body + faces）。
  */
 
-import type { CharacterPose } from '@hcb-editor/editor';
+import type { CharacterFace, CharacterPose } from '@hcb-editor/editor';
 import { parseBinArchive } from './bin.js';
-import { decodeHzc1, rgbaToPngDataUrl } from './hzc.js';
+import { decodeHzc1, decodeHzcSlices, rgbaToPngDataUrl } from './hzc.js';
 
 /** 解析后的条目名。 */
 export interface GraphEntryName {
@@ -37,9 +37,9 @@ export interface CharacterSpriteSet {
 /** graph_bs.bin 整体导入结果。 */
 export interface GraphBsImportResult {
   readonly characters: CharacterSpriteSet[];
-  /** 被忽略的条目数（L/U 变体 + 表情合成图 + 解码失败）。 */
+  /** 被忽略的条目数（L/U 变体 + 解码失败）。 */
   readonly skipped: number;
-  /** 成功解码的基础立绘数。 */
+  /** 成功解码的图片数（body + 表情切片）。 */
   readonly decoded: number;
 }
 
@@ -91,9 +91,9 @@ function buildIndexMap(labels: readonly string[], priority: readonly string[]): 
 }
 
 export interface GraphBsImportOptions {
-  /** PNG 最长边上限（控制内存与体积）；默认 1024。 */
+  /** body PNG 最长边上限（控制内存与体积）；默认 1024。表情切片尺寸小，不做缩放。 */
   readonly maxDimension?: number;
-  /** 每解码一张基础立绘回调一次（done, total）。 */
+  /** 每解码一张图片回调一次（done, total）。 */
   readonly onProgress?: (done: number, total: number) => void;
 }
 
@@ -104,7 +104,7 @@ interface BaseEntry {
   readonly bytes: Uint8Array;
 }
 
-/** 从归档字节导入内置立绘（按角色归类 + 姿势/服装索引映射）。 */
+/** 从归档字节导入内置立绘（按角色归类 + 姿势/服装索引映射 + 表情切片）。 */
 export async function importGraphBsBytes(
   bytes: Uint8Array,
   opts: GraphBsImportOptions = {},
@@ -112,46 +112,76 @@ export async function importGraphBsBytes(
   const { maxDimension = 1024, onProgress } = opts;
   const entries = parseBinArchive(bytes);
 
-  const base: BaseEntry[] = [];
+  const bodiesByCharacter = new Map<string, BaseEntry[]>();
+  const facesByCharacter = new Map<string, Map<string, Uint8Array>>();
   for (const entry of entries) {
     const parsed = parseGraphEntryName(entry.name);
-    if (!parsed || parsed.faceSheet || parsed.size !== '') {
+    if (!parsed || parsed.size !== '') {
       continue;
     }
-    base.push({ character: parsed.character, pose: parsed.pose, costume: parsed.costume, bytes: entry.bytes });
-  }
-
-  const byCharacter = new Map<string, BaseEntry[]>();
-  for (const item of base) {
-    const list = byCharacter.get(item.character) ?? [];
-    list.push(item);
-    byCharacter.set(item.character, list);
+    const item: BaseEntry = { character: parsed.character, pose: parsed.pose, costume: parsed.costume, bytes: entry.bytes };
+    if (parsed.faceSheet) {
+      let byKey = facesByCharacter.get(parsed.character);
+      if (!byKey) {
+        byKey = new Map();
+        facesByCharacter.set(parsed.character, byKey);
+      }
+      byKey.set(`${parsed.pose}/${parsed.costume}`, entry.bytes);
+    } else {
+      const list = bodiesByCharacter.get(parsed.character) ?? [];
+      list.push(item);
+      bodiesByCharacter.set(parsed.character, list);
+    }
   }
 
   const characters: CharacterSpriteSet[] = [];
   let decoded = 0;
-  const characterNames = [...byCharacter.keys()].sort((a, b) => a.localeCompare(b, 'ja'));
+  let total = 0;
+  for (const bodies of bodiesByCharacter.values()) {
+    total += bodies.length;
+  }
+  let done = 0;
+
+  const characterNames = [...bodiesByCharacter.keys()].sort((a, b) => a.localeCompare(b, 'ja'));
   for (const name of characterNames) {
-    const items = byCharacter.get(name)!;
-    const poseIndex = buildIndexMap(items.map((i) => i.pose), POSE_PRIORITY);
-    const costumeIndex = buildIndexMap(items.map((i) => i.costume), []);
+    const bodies = bodiesByCharacter.get(name)!;
+    const faceSheets = facesByCharacter.get(name) ?? new Map<string, Uint8Array>();
+    const poseIndex = buildIndexMap(bodies.map((i) => i.pose), POSE_PRIORITY);
+    const costumeIndex = buildIndexMap(bodies.map((i) => i.costume), []);
 
     const poses: CharacterPose[] = [];
-    for (const item of items) {
+    for (const body of bodies) {
       try {
-        const img = await decodeHzc1(item.bytes);
+        const img = await decodeHzc1(body.bytes);
         const image = rgbaToPngDataUrl(img.width, img.height, img.rgba, maxDimension);
-        poses.push({
-          pose: poseIndex.get(item.pose) ?? 0,
-          costume: costumeIndex.get(item.costume) ?? 0,
-          face: 0,
-          image,
-        });
         decoded += 1;
+
+        const faceBytes = faceSheets.get(`${body.pose}/${body.costume}`);
+        let faces: CharacterFace[] = [];
+        let faceMeta: { faceX: number; faceY: number; faceWidth: number; faceHeight: number } | undefined;
+        if (faceBytes) {
+          const slices = await decodeHzcSlices(faceBytes);
+          faces = slices.slices.map((slice, idx) => {
+            decoded += 1;
+            return { face: idx + 1, image: rgbaToPngDataUrl(slices.width, slices.height, slice) };
+          });
+          faceMeta = { faceX: slices.offsetX, faceY: slices.offsetY, faceWidth: slices.width, faceHeight: slices.height };
+        }
+
+        poses.push({
+          pose: poseIndex.get(body.pose) ?? 0,
+          costume: costumeIndex.get(body.costume) ?? 0,
+          image,
+          faces,
+          ...(faceMeta ?? {}),
+          bodyWidth: img.width,
+          bodyHeight: img.height,
+        });
       } catch {
-        // 解码失败的条目跳过，不计入 decoded。
+        // 解码失败的 body 跳过。
       }
-      onProgress?.(decoded, base.length);
+      done += 1;
+      onProgress?.(done, total);
     }
 
     poses.sort((a, b) => a.pose - b.pose || a.costume - b.costume);

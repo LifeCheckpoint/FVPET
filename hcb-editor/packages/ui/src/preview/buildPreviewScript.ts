@@ -9,20 +9,41 @@ import { projectToIr, type EditorDocument, type ProjectResources } from '@hcb-ed
 import type { IrHeader } from '@hcb-editor/hcb/ir';
 import type { FakePrim, FakeScript } from '@hcb-editor/rfvp';
 
-/** 按 pose/costume/face 组合匹配立绘；未命中回退默认立绘。 */
-function characterImageAt(
+/** 按 pose/costume/face 组合匹配立绘；face>0 时附带表情叠加切片，未命中回退默认立绘。 */
+function characterOverlayAt(
   resources: ProjectResources | undefined,
   name: string,
   pose: number,
   costume: number,
   face: number,
-): string | undefined {
+): { readonly image: string; readonly face?: NonNullable<FakePrim['face']> } | undefined {
   const char = resources?.characters.find((c) => c.name === name);
   if (!char) {
     return undefined;
   }
-  const matched = char.poses?.find((p) => p.pose === pose && p.costume === costume && p.face === face);
-  return matched?.image ?? char.image;
+  const matched = char.poses?.find((p) => p.pose === pose && p.costume === costume);
+  const image = matched?.image ?? char.image;
+  if (!image) {
+    return undefined;
+  }
+  if (matched && face > 0 && matched.faces.length > 0 && matched.faceX !== undefined && matched.faceY !== undefined) {
+    const f = matched.faces.find((x) => x.face === face);
+    if (f) {
+      return {
+        image,
+        face: {
+          image: f.image,
+          x: matched.faceX,
+          y: matched.faceY,
+          width: matched.faceWidth ?? 0,
+          height: matched.faceHeight ?? 0,
+          bodyWidth: matched.bodyWidth ?? 0,
+          bodyHeight: matched.bodyHeight ?? 0,
+        },
+      };
+    }
+  }
+  return { image };
 }
 
 export function buildPreviewScript(
@@ -75,9 +96,12 @@ export function buildPreviewScript(
       };
       if (node.character !== '') {
         prim.label = node.character;
-        const img = characterImageAt(resources, node.character, node.pose, node.costume, node.expression);
-        if (img) {
-          prim.image = img;
+        const overlay = characterOverlayAt(resources, node.character, node.pose, node.costume, node.expression);
+        if (overlay) {
+          prim.image = overlay.image;
+          if (overlay.face) {
+            prim.face = overlay.face;
+          }
         }
       }
       prims.push(prim);

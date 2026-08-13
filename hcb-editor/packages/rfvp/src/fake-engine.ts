@@ -28,6 +28,16 @@ export interface FakePrim {
   image?: string | undefined;
   /** 可选：铺满舞台（背景图）。 */
   fullscreen?: boolean | undefined;
+  /** 可选：表情叠加（在 body 立绘之上再叠一张人脸切片，坐标为 body 像素空间）。 */
+  face?: {
+    readonly image: string;
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+    readonly bodyWidth: number;
+    readonly bodyHeight: number;
+  } | undefined;
 }
 
 export interface FakeScript {

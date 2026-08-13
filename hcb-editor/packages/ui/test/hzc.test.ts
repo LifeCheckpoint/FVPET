@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { deflateSync } from 'node:zlib';
-import { decodeHzc1 } from '../src/resources/hzc.js';
+import { decodeHzc1, decodeHzcSlices } from '../src/resources/hzc.js';
 import { parseBinArchive } from '../src/resources/bin.js';
 
 function buildHzc1(width: number, height: number, bgra: Uint8Array): Uint8Array {
@@ -17,6 +17,32 @@ function buildHzc1(width: number, height: number, bgra: Uint8Array): Uint8Array 
   dv.setUint16(12 + 8, width, true);
   dv.setUint16(12 + 10, height, true);
   dv.setUint32(12 + 20, 1, true); // entry_count
+  out.set(compressed, 44);
+  return out;
+}
+
+function buildHzcMulti(
+  width: number,
+  height: number,
+  slices: Uint8Array[],
+  offsetX: number,
+  offsetY: number,
+): Uint8Array {
+  const all = new Uint8Array(slices.length * width * height * 4);
+  slices.forEach((s, i) => all.set(s, i * width * height * 4));
+  const compressed = deflateSync(all);
+  const out = new Uint8Array(12 + 32 + compressed.length);
+  out.set([0x68, 0x7a, 0x63, 0x31], 0); // "hzc1"
+  const dv = new DataView(out.buffer);
+  dv.setUint32(4, all.length, true); // original_length
+  dv.setUint32(8, 32, true); // header_length
+  out.set([0x4e, 0x56, 0x53, 0x47], 12); // "NVSG"
+  dv.setUint16(12 + 6, 2, true); // type = Multi32Bit
+  dv.setUint16(12 + 8, width, true);
+  dv.setUint16(12 + 10, height, true);
+  dv.setUint16(12 + 12, offsetX, true);
+  dv.setUint16(12 + 14, offsetY, true);
+  dv.setUint32(12 + 20, slices.length, true); // entry_count
   out.set(compressed, 44);
   return out;
 }
@@ -42,6 +68,35 @@ describe('decodeHzc1', () => {
     expect(img.rgba[5]).toBe(255);
     expect(img.rgba[6]).toBe(0);
     expect(img.rgba[7]).toBe(128);
+  });
+});
+
+describe('decodeHzcSlices', () => {
+  it('splits a Multi32Bit face sheet into slices with offset', async () => {
+    // 2 张 2×1 的 BGRA 预乘切片
+    const s1 = new Uint8Array([
+      0, 0, 255, 255, // 红
+      0, 255, 0, 255, // 绿
+    ]);
+    const s2 = new Uint8Array([
+      255, 0, 0, 255, // 蓝
+      255, 255, 0, 255, // 黄（蓝+绿）
+    ]);
+    const bytes = buildHzcMulti(2, 1, [s1, s2], 326, 122);
+    const res = await decodeHzcSlices(bytes);
+
+    expect(res.width).toBe(2);
+    expect(res.height).toBe(1);
+    expect(res.entryCount).toBe(2);
+    expect(res.offsetX).toBe(326);
+    expect(res.offsetY).toBe(122);
+    expect(res.slices).toHaveLength(2);
+    // 切片 0 像素 0：红（r=255）
+    expect(res.slices[0]![0]).toBe(255);
+    expect(res.slices[0]![2]).toBe(0);
+    // 切片 1 像素 0：蓝（b=255）
+    expect(res.slices[1]![2]).toBe(255);
+    expect(res.slices[1]![0]).toBe(0);
   });
 });
 

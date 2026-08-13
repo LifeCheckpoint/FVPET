@@ -32,7 +32,28 @@ async function zlibInflate(data: Uint8Array): Promise<Uint8Array> {
   return new Uint8Array(out);
 }
 
-export async function decodeHzc1(bytes: Uint8Array): Promise<HzcImage> {
+export interface HzcSlices {
+  readonly width: number;
+  readonly height: number;
+  /** 叠加偏移（Multi32Bit 表情切片相对 body 左上角）。 */
+  readonly offsetX: number;
+  readonly offsetY: number;
+  /** 切片数量（Multi32Bit = 表情数；Single = 1）。 */
+  readonly entryCount: number;
+  /** 解预乘后的 RGBA 8-bit 切片数组（每片 width*height*4）。 */
+  readonly slices: Uint8Array[];
+}
+
+/** 解析 NVSG 头 + 解压 + 解预乘为完整 RGBA 像素流（entryCount × width × height）。 */
+async function decodeHzcRaw(bytes: Uint8Array): Promise<{
+  readonly type: number;
+  readonly width: number;
+  readonly height: number;
+  readonly offsetX: number;
+  readonly offsetY: number;
+  readonly entryCount: number;
+  readonly rgba: Uint8Array;
+}> {
   if (bytes.length < 44) {
     throw new Error('hzc1 文件过短');
   }
@@ -54,13 +75,17 @@ export async function decodeHzc1(bytes: Uint8Array): Promise<HzcImage> {
   const type = readU16LE(bytes, nvsg + 6);
   const width = readU16LE(bytes, nvsg + 8);
   const height = readU16LE(bytes, nvsg + 10);
+  const offsetX = readU16LE(bytes, nvsg + 12);
+  const offsetY = readU16LE(bytes, nvsg + 14);
+  const entryCount = readU32LE(bytes, nvsg + 20) || 1;
   const compressed = bytes.subarray(nvsg + headerLength);
   const raw = await zlibInflate(compressed);
 
-  const rgba = new Uint8Array(width * height * 4);
+  const pixelCount = width * height * entryCount;
+  const rgba = new Uint8Array(pixelCount * 4);
   if (type === 0) {
     // Single24Bit：RGB，无 alpha
-    for (let i = 0; i < width * height; i += 1) {
+    for (let i = 0; i < pixelCount; i += 1) {
       rgba[i * 4] = raw[i * 3]!;
       rgba[i * 4 + 1] = raw[i * 3 + 1]!;
       rgba[i * 4 + 2] = raw[i * 3 + 2]!;
@@ -68,7 +93,7 @@ export async function decodeHzc1(bytes: Uint8Array): Promise<HzcImage> {
     }
   } else if (type === 1 || type === 2) {
     // Single/Multi32Bit：BGRA 预乘 alpha → 解预乘
-    for (let i = 0; i < width * height; i += 1) {
+    for (let i = 0; i < pixelCount; i += 1) {
       const b = raw[i * 4]!;
       const g = raw[i * 4 + 1]!;
       const r = raw[i * 4 + 2]!;
@@ -83,7 +108,24 @@ export async function decodeHzc1(bytes: Uint8Array): Promise<HzcImage> {
     throw new Error(`暂不支持 NVSG type=${type}`);
   }
 
-  return { width, height, rgba };
+  return { type, width, height, offsetX, offsetY, entryCount, rgba };
+}
+
+/** 解码单张立绘（body 等 Single 类型：取第一片）。 */
+export async function decodeHzc1(bytes: Uint8Array): Promise<HzcImage> {
+  const { width, height, rgba } = await decodeHzcRaw(bytes);
+  return { width, height, rgba: rgba.slice(0, width * height * 4) };
+}
+
+/** 解码全部切片（Multi32Bit 表情集：entryCount 张人脸）。 */
+export async function decodeHzcSlices(bytes: Uint8Array): Promise<HzcSlices> {
+  const { width, height, offsetX, offsetY, entryCount, rgba } = await decodeHzcRaw(bytes);
+  const sliceLen = width * height * 4;
+  const slices: Uint8Array[] = [];
+  for (let i = 0; i < entryCount; i += 1) {
+    slices.push(rgba.slice(i * sliceLen, (i + 1) * sliceLen));
+  }
+  return { width, height, offsetX, offsetY, entryCount, slices };
 }
 
 /**
