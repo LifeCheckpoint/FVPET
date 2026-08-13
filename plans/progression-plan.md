@@ -117,10 +117,10 @@
 
 | # | 差距 | 状态 | 说明 |
 |---|---|---|---|
-| G3 | **背景表数据化 + 背景真实名称** | ⬜ | bgset `background` 仍为占位 `bg_<num>`；`bg_list` 真实名称与背景函数地址映射未提取 |
-| G6 | **validate 层（编译前诊断）** | ⬜ | 计划 §3.1 要求 `hcb/src/validate/`（栈平衡/分支边界/重定位完整性/label 存在性），当前无此模块；编译错误目前是运行时 `throw`，缺面向节点的友好诊断 |
-| G9 | **jump 节点** | ⬜ | 计划节点类型含 `jump`（goto label），当前 IR/UI 无 jump 节点，剧本文本 DSL 的 `jump x` 无法表达 |
-| G18 | **Electron 原生文件对话框** | ⬜ | 保存/打开工程、导出 .hcb 当前用浏览器 Blob 下载 + `input[type=file]`（文件名固定 `project.hcbproj.json`），Electron 下应走 `dialog.showSaveDialog/showOpenDialog` |
+| G3 | **背景表数据化 + 背景真实名称** | 🟡 阻塞 | 调研结论：`.reference_repo` 的 `hcb_build.py bg_list` 编号与 `extract-base` 从真实 Sakura.hcb 扫出的资源编号（240/241/…）**不一致**，真实背景名需外部资源清单（游戏档案文件列表），当前无干净来源；资源管理器已可手工改名兜底 |
+| G6 | **validate 层（编译前诊断）** | ✅ | [`validate.ts`](hcb-editor/packages/hcb/src/validate/index.ts:1) `validateIr`（重复 label + branch/thread/jump/selset 悬空引用）；[`compileEditorState`](hcb-editor/packages/ui/src/preview/compileFromState.ts:1) 编译前校验并抛结构化错误，3 单测 |
+| G9 | **jump 节点** | ✅ | IrNode 增加 `jump{target}` + EdgeKind `jump` + [`lower`](hcb-editor/packages/compiler/src/passes/lower.ts:1) 发 `jmp` + 调色板/FlowCanvas/PropertyPanel/DSL 全链 + 连线端点校验，2 单测 |
+| G18 | **Electron 原生文件对话框** | ✅ | [`registerFileDialogIpc`](hcb-editor/packages/apps/desktop/src/ipc.ts:25)（saveTextFile/saveBinaryFile/openTextFile）+ preload `window.fileDialog` + [`fileDialog.ts`](hcb-editor/packages/ui/src/fileDialog.ts:1)（Electron 原生对话框，浏览器 Blob/input 兜底）+ AppShell 接入 |
 | G11 | **真实引擎预览启用** | ✅ | 桥接层已接（RfvpProcessManager + contextBridge + RfvpClient + PreviewPanel，缺桥自动回退）；G1 完成后 tick 已通。⚠️ 额外打通了一个隐藏阻断：portable VM 原生桥对未实现演出类 syscall（TextPrint/TextClear/ColorSet/Motion* 等）已改为 no-op 兜底（[`native_bridge.rs`](hcb-editor/vendor/rfvp/crates/rfvp/src/portable/native_bridge.rs:176)），否则 tick 会以 `Unsupported` 中断线程 |
 
 ### P2 —— 补全与精度
