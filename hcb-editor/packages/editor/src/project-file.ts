@@ -58,6 +58,12 @@ const AudioResourceSchema = z.object({
   src: z.string().optional(),
 });
 
+const CgResourceSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  image: z.string(),
+});
+
 const DocNodeJson = z.object({
   id: z.string(),
   node: z.unknown(),
@@ -83,6 +89,7 @@ const ProjectFileJson = z.object({
   resources: z.object({
     characters: z.array(CharacterResourceSchema),
     backgrounds: z.array(BackgroundResourceSchema),
+    cgs: z.array(CgResourceSchema),
     audios: z.array(AudioResourceSchema),
   }),
   selection: z.object({ nodeId: z.string().nullable() }),
@@ -223,10 +230,15 @@ export function deserializeProject(text: string): EditorState {
     }
     return r;
   });
+  const cgs = parsed.resources.cgs.map((c) => ({
+    id: c.id,
+    name: c.name,
+    image: c.image,
+  }));
   return {
     header: parsed.header,
     document: { nodes, edges: parsed.document.edges, startNodeId: parsed.document.startNodeId },
-    resources: { characters, backgrounds, audios },
+    resources: { characters, backgrounds, cgs, audios },
     selection: parsed.selection,
     nextId: parsed.nextId,
   };

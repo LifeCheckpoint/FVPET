@@ -8,6 +8,7 @@ import {
   audioTemplate,
   bgsetTemplate,
   bssetTemplate,
+  cgsetTemplate,
   diaTemplate,
   msgsetTemplate,
   selsetTemplate,
@@ -69,6 +70,9 @@ export function lower(ir: IrScript, ctx: TemplateCtx): AsmBlock[] {
         break;
       case 'bgset':
         blocks.push(...bgsetTemplate.instantiate(node, ctx));
+        break;
+      case 'cgset':
+        blocks.push(...cgsetTemplate.instantiate(node, ctx));
         break;
       case 'selset':
         blocks.push(...selsetTemplate.instantiate(node, ctx));

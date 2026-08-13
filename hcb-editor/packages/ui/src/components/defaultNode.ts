@@ -8,6 +8,7 @@ import {
   bgsetNode,
   branchNode,
   bssetNode,
+  cgsetNode,
   commentNode,
   diaNode,
   jumpNode,
@@ -30,6 +31,8 @@ export function defaultNode(kind: CreatableNodeKind): IrNode {
       return diaNode('');
     case 'bgset':
       return bgsetNode('');
+    case 'cgset':
+      return cgsetNode('');
     case 'bsset':
       return bssetNode({ character: '', pose: 0, costume: 0, expression: 0, position: { x: 0, y: 0 }, layer: 0 });
     case 'selset':

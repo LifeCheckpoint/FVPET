@@ -12,12 +12,14 @@ import {
   addAudios,
   addBackground,
   addBackgrounds,
+  addCgs,
   editAudio,
   editBackground,
   editCharacter,
   editCharacters,
   removeAudio,
   removeBackground,
+  removeCg,
   type AudioResource,
   type BackgroundResource,
   type CharacterPose,
@@ -27,10 +29,10 @@ import {
 } from '@hcb-editor/editor';
 import { loadBaseGame } from '@hcb-editor/compiler';
 import { importGraphBsFile } from '../resources/graph-bs.js';
-import { importGraphBgFile } from '../resources/graph-bg.js';
+import { importCgBinFile, importGraphBgFile } from '../resources/graph-bg.js';
 import { importBgmBinFile } from '../resources/audio-bin.js';
 
-type Tab = 'characters' | 'backgrounds' | 'audios';
+type Tab = 'characters' | 'backgrounds' | 'cgs' | 'audios';
 
 /** 音频导入队列候选（预览 + 勾选 + 一次性提交）。 */
 interface PendingResource {
@@ -455,24 +457,22 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
     }
   };
 
-  /** 导入内置 CG（graph_vis.bin / graph_vish.bin）：全量导入为全屏背景。 */
+  /** 导入内置 CG（graph_vis.bin / graph_vish.bin）：全量导入为 CgResource（名称大写）。 */
   const importBuiltinCg = async (files: File[]): Promise<void> => {
     setImportingCount((c) => c + 1);
     setImportProgress(null);
     try {
-      const base = loadBaseGame(state.header.game).tables.backgrounds;
       let total = 0;
       let skipped = 0;
       for (const file of files) {
-        const result = await importGraphBgFile(file, {
+        const result = await importCgBinFile(file, {
           maxDimension: 1024,
-          baseBackgrounds: base,
           onProgress: (done, count) => setImportProgress({ done, total: count }),
         });
-        if (result.backgrounds.length > 0) {
-          store.dispatch(addBackgrounds(result.backgrounds));
+        if (result.cgs.length > 0) {
+          store.dispatch(addCgs(result.cgs));
         }
-        total += result.backgrounds.length;
+        total += result.cgs.length;
         skipped += result.skipped;
       }
       window.alert(`内置CG导入完成：${total} 张CG${skipped > 0 ? `，跳过 ${skipped}` : ''}`);
@@ -517,6 +517,9 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
         </button>
         <button type="button" role="tab" aria-selected={tab === 'backgrounds'} className={`workspace__tab${tab === 'backgrounds' ? ' workspace__tab--active' : ''}`} onClick={() => setTab('backgrounds')}>
           背景
+        </button>
+        <button type="button" role="tab" aria-selected={tab === 'cgs'} className={`workspace__tab${tab === 'cgs' ? ' workspace__tab--active' : ''}`} onClick={() => setTab('cgs')}>
+          CG
         </button>
         <button type="button" role="tab" aria-selected={tab === 'audios'} className={`workspace__tab${tab === 'audios' ? ' workspace__tab--active' : ''}`} onClick={() => setTab('audios')}>
           音频
@@ -627,6 +630,25 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
             </div>
           )}
 
+          {tab === 'cgs' && (
+            <div className="resource-grid">
+              {state.resources.cgs.length === 0 && (
+                <div className="resource-empty">尚未导入 CG，点击下方「导入内置CG文件」。</div>
+              )}
+              {state.resources.cgs.map((r) => (
+                <article className="resource-card" key={r.id}>
+                  <div className="resource-card__thumb">
+                    {r.image ? <img src={r.image} alt={r.name} /> : <span>{r.name}</span>}
+                  </div>
+                  <header className="resource-card__head">
+                    <span className="resource-card__name">{r.name}</span>
+                    <button type="button" className="resource-card__remove" aria-label="删除CG" onClick={() => store.dispatch(removeCg(r.id))}>×</button>
+                  </header>
+                </article>
+              ))}
+            </div>
+          )}
+
           {tab === 'audios' && (
             <div className="resource-grid resource-grid--audio">
               {state.resources.audios.length === 0 && (
@@ -713,23 +735,25 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
                   }}
                 />
               </label>
-              <label className="btn btn--secondary">
-                导入内置CG文件
-                <input
-                  type="file"
-                  accept=".bin"
-                  multiple
-                  hidden
-                  onChange={(e) => {
-                    const files = Array.from(e.target.files ?? []);
-                    if (files.length > 0) {
-                      void importBuiltinCg(files);
-                    }
-                    e.target.value = '';
-                  }}
-                />
-              </label>
             </>
+          )}
+          {tab === 'cgs' && (
+            <label className="btn btn--secondary">
+              导入内置CG文件
+              <input
+                type="file"
+                accept=".bin"
+                multiple
+                hidden
+                onChange={(e) => {
+                  const files = Array.from(e.target.files ?? []);
+                  if (files.length > 0) {
+                    void importBuiltinCg(files);
+                  }
+                  e.target.value = '';
+                }}
+              />
+            </label>
           )}
           {tab === 'audios' && (
             <>

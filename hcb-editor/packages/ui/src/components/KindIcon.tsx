@@ -42,6 +42,13 @@ export function KindIcon({ kind }: { readonly kind: IrNode['kind'] }) {
           <path d="M2.5 12.5 6 7l2.5 3 2-2.5 3 5" />
         </svg>
       );
+    case 'cgset':
+      return (
+        <svg {...iconProps}>
+          <rect x="2.5" y="3.5" width="11" height="9" rx="1" />
+          <path d="m6.5 6.5 3 1.5-3 1.5z" />
+        </svg>
+      );
     case 'bsset':
       return (
         <svg {...iconProps}>

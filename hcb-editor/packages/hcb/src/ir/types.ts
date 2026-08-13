@@ -54,6 +54,13 @@ export const IrNode = z.discriminatedUnion('kind', [
     transition: z.enum(['cross', 'fade', 'none']).optional(),
   }),
   z.object({
+    kind: z.literal('cgset'), // 事件 CG 显示（字符串名 + 图元槽位 + 显示参数）
+    name: z.string(), // CG 资源名（大写，如 ASAHI_E011A1）
+    slot: z.number(), // 图元槽位（push_i16）
+    mode: z.number(), // 显示模式（push_i8）
+    flag: z.number(), // 标志（push_i8）
+  }),
+  z.object({
     kind: z.literal('bsset'),
     character: z.string(),
     pose: z.number(), // 姿势

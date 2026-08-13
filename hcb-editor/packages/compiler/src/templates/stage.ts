@@ -11,6 +11,7 @@ type AudioNode = Extract<IrNode, { kind: 'audio' }>;
 type ThreadNode = Extract<IrNode, { kind: 'thread' }>;
 type WaitNode = Extract<IrNode, { kind: 'wait' }>;
 type MsgsetNode = Extract<IrNode, { kind: 'msgset' }>;
+type CgsetNode = Extract<IrNode, { kind: 'cgset' }>;
 
 const PUSH: AsmPattern = {
   anyOf: [
@@ -275,18 +276,36 @@ export const controlTemplate: Template<never> = {
   },
 };
 
-export const cgsetTemplate: Template<never> = {
+/** Sakura moyu CG 显示函数（push_i16 槽位 + push_string 资源名 + push_i8×2 + call）。 */
+const CGSET_FN = 0x000373a5;
+
+export const cgsetTemplate: Template<CgsetNode> = {
   id: 'fvp.cgset',
   signature: [
     { mnemonic: 'push_i16' },
     { mnemonic: 'push_string' },
     { mnemonic: 'push_i8' },
     { mnemonic: 'push_i8' },
-    { callToAny: [0x000373a5] },
+    { callToAny: [CGSET_FN] },
   ],
-  slots: {},
-  instantiate(_node: never, _ctx: TemplateCtx): AsmBlock[] {
-    throw new Error('fvp.cgset 暂无独立 IR 节点，仅用于反编译识别');
+  slots: {
+    name: { kind: 'string', doc: 'CG 资源名（大写）' },
+    slot: { kind: 'i16', doc: '图元槽位' },
+    mode: { kind: 'i8', doc: '显示模式' },
+    flag: { kind: 'i8', doc: '标志' },
+  },
+  instantiate(node, _ctx): AsmBlock[] {
+    return [
+      {
+        instructions: [
+          { op: 'push_i16', value: node.slot },
+          { op: 'push_string', text: node.name },
+          { op: 'push_i8', value: node.mode },
+          { op: 'push_i8', value: node.flag },
+          { op: 'call', target: 'f_000373a5' },
+        ],
+      },
+    ];
   },
 };
 

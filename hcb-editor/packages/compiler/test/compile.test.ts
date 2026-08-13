@@ -64,6 +64,35 @@ describe('compile pipeline (synthetic, CI-independent)', () => {
     expect(jz).toBeDefined();
   });
 
+  it('compiles cgset to push_i16 + push_string + push_i8×2 + call f_000373a5', () => {
+    const nls: Nls = 'sjis';
+    const cgIr: IrScript = {
+      header: { schemaVersion: 1, engine: 'fvp', game: 'test', nls: 'sjis' },
+      nodes: [
+        { kind: 'label', name: 'start' },
+        { kind: 'cgset', name: 'ASAHI_E011A1', slot: 240, mode: 5, flag: 2 },
+      ],
+    };
+    const bytes = compile(cgIr, {
+      sysdesc: emptySysdesc(),
+      tables: { characters: {}, backgrounds: {}, globals: {} },
+      nls,
+    });
+    const decoded = decodeHcb(bytes, nls);
+    const idx = decoded.instructions.findIndex(
+      (i) => i.mnemonic === 'call' && i.args.kind === 'x32' && i.args.target === 0x000373a5,
+    );
+    expect(idx).toBeGreaterThanOrEqual(4);
+    expect(decoded.instructions[idx - 1]!.mnemonic).toBe('push_i8');
+    expect(decoded.instructions[idx - 2]!.mnemonic).toBe('push_i8');
+    expect(decoded.instructions[idx - 3]!.mnemonic).toBe('push_string');
+    expect(decoded.instructions[idx - 4]!.mnemonic).toBe('push_i16');
+    const str = decoded.instructions[idx - 3]!;
+    if (str.args.kind === 'string') {
+      expect(str.args.text).toBe('ASAHI_E011A1');
+    }
+  });
+
   it('passes raw bytes through and relocates a jmp to a label', () => {
     const nls: Nls = 'sjis';
     // jmp 指令：0x06 + 4 字节占位目标；重定位指向 'end' 标签。

@@ -19,6 +19,7 @@ export const NODE_KIND_META: readonly NodeKindMeta[] = [
   { kind: 'speak', label: '台词', hint: '角色名 + 台词文本' },
   { kind: 'dia', label: '旁白', hint: '无名字的纯文本' },
   { kind: 'bgset', label: '背景', hint: '切换背景' },
+  { kind: 'cgset', label: 'CG', hint: '事件CG显示' },
   { kind: 'bsset', label: '立绘', hint: '角色立绘站位' },
   { kind: 'selset', label: '选项', hint: '分支选项' },
   { kind: 'audio', label: '音频', hint: 'BGM / 语音 / 音效' },

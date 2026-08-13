@@ -1,13 +1,13 @@
 /**
- * 内置背景 / 事件 CG 导入（graph_bg.bin / graph_vis.bin / graph_vish.bin）。
+ * 内置背景 / 事件 CG 导入。
  *
- * 三者都是 FVP VFS 归档，条目为 hzc1 图片：
- * - graph_bg.bin：`BG<编号>_<变体>[b]`，编号 = 底座背景号，变体 = 时段（000 白天/010 黄昏/020 夜晚…），
- *   `b` 后缀为次要层；全量导入（默认变体命名 `bg_<编号>`，其余命名 `bg_<编号>_<变体>`）。
- * - graph_vis.bin / graph_vish.bin：事件 CG（2560×1440），条目名即 CG 名，全部导入。
+ * - graph_bg.bin：VFS 归档，`BG<编号>_<变体>[b]`（编号 = 底座背景号，变体 = 时段，`b` 为次要层）。
+ *   背景由「编号」引用，导入为 BackgroundResource（bg_<编号> / bg_<编号>_<变体>）。
+ * - graph_vis.bin / graph_vish.bin：事件 CG（2560×1440），条目名即 CG 名。
+ *   CG 由「字符串名」引用（HCB 中为大写），导入为 CgResource（名称大写）。
  */
 
-import type { BackgroundResource } from '@hcb-editor/editor';
+import type { BackgroundResource, CgResource } from '@hcb-editor/editor';
 import { parseBinArchive } from './bin.js';
 import { decodeHzc1, rgbaToPngDataUrl } from './hzc.js';
 
@@ -27,58 +27,53 @@ export function parseBgEntryName(name: string): { readonly num: number; readonly
 }
 
 export interface GraphBgResult {
-  /** 导入的背景（CG 亦作为背景，全屏显示）。 */
   readonly backgrounds: readonly Omit<BackgroundResource, 'id'>[];
-  /** 被忽略 / 失败的条目数。 */
   readonly skipped: number;
-  /** 成功解码的图片数。 */
   readonly decoded: number;
 }
 
-export interface GraphBgOptions {
-  /** PNG 最长边上限（控制内存与体积）；默认 1280。 */
+export interface CgBinResult {
+  readonly cgs: readonly Omit<CgResource, 'id'>[];
+  readonly skipped: number;
+  readonly decoded: number;
+}
+
+interface CommonOptions {
   readonly maxDimension?: number;
-  /** 底座背景表（用于给 BG 编号匹配真实 bgFn / 引擎编号）。 */
-  readonly baseBackgrounds?: Readonly<Record<string, BaseBackgroundInfo>>;
   readonly onProgress?: (done: number, total: number) => void;
 }
 
+async function decodePng(bytes: Uint8Array, maxDimension: number): Promise<string | null> {
+  try {
+    const img = await decodeHzc1(bytes);
+    return rgbaToPngDataUrl(img.width, img.height, img.rgba, maxDimension);
+  } catch {
+    return null;
+  }
+}
+
+/** 导入背景（graph_bg.bin）：跳过 b 次要层，全量导入各时段变体。 */
 export async function importGraphBgBytes(
   bytes: Uint8Array,
-  opts: GraphBgOptions = {},
+  opts: CommonOptions & { readonly baseBackgrounds?: Readonly<Record<string, BaseBackgroundInfo>> } = {},
 ): Promise<GraphBgResult> {
   const { maxDimension = 1280, baseBackgrounds = {}, onProgress } = opts;
   const entries = parseBinArchive(bytes);
 
-  // 分类：BG 背景（跳过 b 次要层）全量导入；其余按 CG 全量。
   const bgs: { num: number; variant: number; bytes: Uint8Array }[] = [];
-  const cgs: { name: string; bytes: Uint8Array }[] = [];
   for (const entry of entries) {
     const parsed = parseBgEntryName(entry.name);
     if (parsed && !parsed.blur) {
       bgs.push({ num: parsed.num, variant: parsed.variant, bytes: entry.bytes });
-    } else if (!parsed) {
-      cgs.push({ name: entry.name, bytes: entry.bytes });
     }
   }
   bgs.sort((a, b) => a.num - b.num || a.variant - b.variant);
 
   const backgrounds: Omit<BackgroundResource, 'id'>[] = [];
   let decoded = 0;
-  const total = bgs.length + cgs.length;
   let done = 0;
-
-  const decode = async (bytesToDecode: Uint8Array): Promise<string | null> => {
-    try {
-      const img = await decodeHzc1(bytesToDecode);
-      return rgbaToPngDataUrl(img.width, img.height, img.rgba, maxDimension);
-    } catch {
-      return null;
-    }
-  };
-
   for (const bg of bgs) {
-    const image = await decode(bg.bytes);
+    const image = await decodePng(bg.bytes, maxDimension);
     if (image !== null) {
       const key = `bg_${bg.num}`;
       const base = baseBackgrounds[key];
@@ -87,27 +82,52 @@ export async function importGraphBgBytes(
       decoded += 1;
     }
     done += 1;
-    onProgress?.(done, total);
+    onProgress?.(done, bgs.length);
   }
 
-  for (const cg of cgs) {
-    const image = await decode(cg.bytes);
+  return { backgrounds, skipped: bgs.length - decoded, decoded };
+}
+
+/** 导入事件 CG（graph_vis/vish.bin）：全量导入，名称转大写以匹配 HCB 字符串引用。 */
+export async function importCgBinBytes(
+  bytes: Uint8Array,
+  opts: CommonOptions = {},
+): Promise<CgBinResult> {
+  const { maxDimension = 1024, onProgress } = opts;
+  const entries = parseBinArchive(bytes);
+
+  const cgs: Omit<CgResource, 'id'>[] = [];
+  let decoded = 0;
+  let done = 0;
+  for (const entry of entries) {
+    if (parseBgEntryName(entry.name) !== null) {
+      // 跳过 BG 编号条目（这些属于背景）。
+      done += 1;
+      continue;
+    }
+    const image = await decodePng(entry.bytes, maxDimension);
     if (image !== null) {
-      backgrounds.push({ name: cg.name, variant: 0, bgFn: null, image });
+      cgs.push({ name: entry.name.toUpperCase(), image });
       decoded += 1;
     }
     done += 1;
-    onProgress?.(done, total);
+    onProgress?.(done, entries.length);
   }
 
-  return { backgrounds, skipped: entries.length - decoded, decoded };
+  return { cgs, skipped: entries.length - decoded, decoded };
 }
 
-/** 从用户选择的文件导入背景/CG。 */
+/** 从用户选择的文件导入背景。 */
 export async function importGraphBgFile(
   file: File,
-  opts: GraphBgOptions = {},
+  opts: CommonOptions & { readonly baseBackgrounds?: Readonly<Record<string, BaseBackgroundInfo>> } = {},
 ): Promise<GraphBgResult> {
   const bytes = new Uint8Array(await file.arrayBuffer());
   return importGraphBgBytes(bytes, opts);
+}
+
+/** 从用户选择的文件导入 CG。 */
+export async function importCgBinFile(file: File, opts: CommonOptions = {}): Promise<CgBinResult> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  return importCgBinBytes(bytes, opts);
 }

@@ -33,6 +33,8 @@ export function summarizeNode(node: IrNode): NodeSummary {
       return { primary: node.name, secondary: nodeKindLabel('label') };
     case 'bgset':
       return { primary: node.background, secondary: nodeKindLabel('bgset') };
+    case 'cgset':
+      return { primary: node.name, secondary: nodeKindLabel('cgset') };
     case 'bsset':
       return { primary: node.character, secondary: nodeKindLabel('bsset') };
     case 'selset':

@@ -41,8 +41,10 @@ export function PropertyPanel({ state, store }: PropertyPanelProps) {
   const baseBackgrounds = useMemo(() => availableBaseBackgrounds(state.header.game), [state.header.game]);
   const projectCharacters = useMemo(() => state.resources.characters.map((c) => c.name), [state.resources.characters]);
   const projectBackgrounds = useMemo(() => state.resources.backgrounds.map((b) => b.name), [state.resources.backgrounds]);
+  const projectCgs = useMemo(() => state.resources.cgs.map((c) => c.name), [state.resources.cgs]);
   const speakerOptions = useMemo(() => [...new Set([...baseCharacters, ...projectCharacters])], [baseCharacters, projectCharacters]);
   const backgroundOptions = useMemo(() => [...new Set([...baseBackgrounds, ...projectBackgrounds])], [baseBackgrounds, projectBackgrounds]);
+  const cgOptions = useMemo(() => [...new Set(projectCgs)], [projectCgs]);
 
   const selectedId = state.selection.nodeId;
   const docNode = selectedId ? state.document.nodes.find((n) => n.id === selectedId) : undefined;
@@ -87,6 +89,11 @@ export function PropertyPanel({ state, store }: PropertyPanelProps) {
       </datalist>
       <datalist id="hcb-backgrounds">
         {backgroundOptions.map((name) => (
+          <option key={name} value={name} />
+        ))}
+      </datalist>
+      <datalist id="hcb-cgs">
+        {cgOptions.map((name) => (
           <option key={name} value={name} />
         ))}
       </datalist>
@@ -161,6 +168,29 @@ export function PropertyPanel({ state, store }: PropertyPanelProps) {
               }}
             />
           </label>
+        </>
+      )}
+
+      {node.kind === 'cgset' && (
+        <>
+          <label className="pp__field">
+            <span className="pp__label">CG</span>
+            <div className="pp__picker">
+              <input className="pp__input" list="hcb-cgs" value={node.name} onChange={(e) => edit({ ...node, name: e.target.value })} />
+              {(() => {
+                const cg = state.resources.cgs.find((c) => c.name.toLowerCase() === node.name.toLowerCase());
+                return cg ? <img className="pp__picker-thumb" src={cg.image} alt={node.name} /> : null;
+              })()}
+            </div>
+          </label>
+          <div className="pp__field">
+            <span className="pp__label">槽位 slot / 模式 mode / 标志 flag</span>
+            <div className="pp__choice">
+              <input className="pp__input" type="number" value={node.slot} onChange={(e) => edit({ ...node, slot: Number(e.target.value) })} />
+              <input className="pp__input" type="number" value={node.mode} onChange={(e) => edit({ ...node, mode: Number(e.target.value) })} />
+              <input className="pp__input" type="number" value={node.flag} onChange={(e) => edit({ ...node, flag: Number(e.target.value) })} />
+            </div>
+          </div>
         </>
       )}
 

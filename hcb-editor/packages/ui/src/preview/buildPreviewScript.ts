@@ -82,6 +82,24 @@ export function buildPreviewScript(
         });
         primId += 1;
       }
+    } else if (node.kind === 'cgset') {
+      const cg = resources?.cgs.find((c) => c.name.toLowerCase() === node.name.toLowerCase());
+      if (cg?.image) {
+        prims.push({
+          id: primId,
+          graphId: 0,
+          x: 0,
+          y: 0,
+          z: -5,
+          alpha: 1,
+          scale: 1,
+          rotate: 0,
+          blend: 0,
+          image: cg.image,
+          fullscreen: true,
+        });
+        primId += 1;
+      }
     } else if (node.kind === 'bsset') {
       const prim: FakePrim = {
         id: primId,

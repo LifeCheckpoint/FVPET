@@ -13,7 +13,7 @@ import { enablePatches, produceWithPatches, type Patch } from 'immer';
 import type { CondExpr, IrNode } from '@hcb-editor/hcb/ir';
 import type { EdgeKind, EditorDocument, EditorState } from './state.js';
 import { branchNode, jumpNode, labelNode, speakNode } from './node-factory.js';
-import type { AudioResource, BackgroundResource, CharacterResource } from './resources.js';
+import type { AudioResource, BackgroundResource, CgResource, CharacterResource } from './resources.js';
 
 // Immer patches 插件需在模块加载时启用一次
 enablePatches();
@@ -39,7 +39,11 @@ export type Command =
   | { readonly kind: 'add_audio'; readonly audio: Omit<AudioResource, 'id'> }
   | { readonly kind: 'add_audios'; readonly audios: readonly Omit<AudioResource, 'id'>[] }
   | { readonly kind: 'remove_audio'; readonly id: string }
-  | { readonly kind: 'edit_audio'; readonly id: string; readonly audio: AudioResource };
+  | { readonly kind: 'edit_audio'; readonly id: string; readonly audio: AudioResource }
+  | { readonly kind: 'add_cg'; readonly cg: Omit<CgResource, 'id'> }
+  | { readonly kind: 'add_cgs'; readonly cgs: readonly Omit<CgResource, 'id'>[] }
+  | { readonly kind: 'remove_cg'; readonly id: string }
+  | { readonly kind: 'edit_cg'; readonly id: string; readonly cg: CgResource };
 
 export interface ApplyResult {
   readonly next: EditorState;
@@ -295,6 +299,34 @@ export function applyCommand(state: EditorState, cmd: Command): ApplyResult {
         }
         break;
       }
+      case 'add_cg': {
+        const id = `g${draft.nextId}`;
+        draft.resources.cgs.push({ id, ...cmd.cg });
+        draft.nextId += 1;
+        break;
+      }
+      case 'add_cgs': {
+        for (const cg of cmd.cgs) {
+          const id = `g${draft.nextId}`;
+          draft.resources.cgs.push({ id, ...cg });
+          draft.nextId += 1;
+        }
+        break;
+      }
+      case 'remove_cg': {
+        const idx = draft.resources.cgs.findIndex((r) => r.id === cmd.id);
+        if (idx >= 0) {
+          draft.resources.cgs.splice(idx, 1);
+        }
+        break;
+      }
+      case 'edit_cg': {
+        const idx = draft.resources.cgs.findIndex((r) => r.id === cmd.id);
+        if (idx >= 0) {
+          draft.resources.cgs[idx] = cmd.cg;
+        }
+        break;
+      }
     }
   });
 
@@ -449,4 +481,20 @@ export function removeAudio(id: string): Command {
 
 export function editAudio(id: string, audio: AudioResource): Command {
   return { kind: 'edit_audio', id, audio };
+}
+
+export function addCg(cg: Omit<CgResource, 'id'>): Command {
+  return { kind: 'add_cg', cg };
+}
+
+export function addCgs(cgs: readonly Omit<CgResource, 'id'>[]): Command {
+  return { kind: 'add_cgs', cgs };
+}
+
+export function removeCg(id: string): Command {
+  return { kind: 'remove_cg', id };
+}
+
+export function editCg(id: string, cg: CgResource): Command {
+  return { kind: 'edit_cg', id, cg };
 }

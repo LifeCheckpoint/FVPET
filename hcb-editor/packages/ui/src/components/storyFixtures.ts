@@ -49,6 +49,9 @@ export function sampleState(): EditorState {
         { id: 'b1', name: '教室', variant: 0, bgFn: 226337 },
         { id: 'b2', name: '樱花道', variant: 1, bgFn: 226340 },
       ],
+      cgs: [
+        { id: 'g1', name: 'ASAHI_E011A1', image: '' },
+      ],
       audios: [
         { id: 'a1', type: 'bgm', number: 7, label: '片头曲' },
         { id: 'a2', type: 'se', number: 3, label: '开门声' },

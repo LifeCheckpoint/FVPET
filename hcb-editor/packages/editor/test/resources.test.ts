@@ -3,6 +3,8 @@ import {
   addAudio,
   addBackground,
   addBackgrounds,
+  addCg,
+  addCgs,
   addCharacter,
   applyCommand,
   createProject,
@@ -64,6 +66,20 @@ describe('resource commands', () => {
     expect(next.resources.backgrounds[0]!.bgFn).toBe(226337);
     expect(next.resources.backgrounds[0]!.image).toBe('data:image/png;base64,x');
     expect(next.resources.backgrounds[1]!.name).toBe('bg_241');
+  });
+
+  it('bulk adds CGs in a single command', () => {
+    let state = emptyState();
+    state = applyCommand(state, addCg({ name: 'ASAHI_E011A1', image: 'data:image/png;base64,x' })).next;
+    state = applyCommand(state, addCgs([
+      { name: 'CHIWA_H01A0', image: 'data:image/png;base64,y' },
+      { name: 'KURU_E201A', image: 'data:image/png;base64,z' },
+    ])).next;
+
+    expect(state.resources.cgs).toHaveLength(3);
+    expect(state.resources.cgs[0]!.id).toBe('g1');
+    expect(state.resources.cgs[1]!.name).toBe('CHIWA_H01A0');
+    expect(state.resources.cgs[2]!.name).toBe('KURU_E201A');
   });
 
   it('removes a character by id', () => {

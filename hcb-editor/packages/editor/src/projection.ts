@@ -190,6 +190,8 @@ function lineText(node: DocNode, document: EditorDocument): string[] {
       }
       return [text];
     }
+    case 'cgset':
+      return [`cg ${n.name} slot ${n.slot}`];
     case 'bsset':
       return [
         `bs ${n.character} pose ${n.pose} costume ${n.costume} face ${n.expression} layer ${n.layer}`,

@@ -18,6 +18,7 @@ export type SpeakNode = Extract<IrNode, { kind: 'speak' }>;
 export type DiaNode = Extract<IrNode, { kind: 'dia' }>;
 export type LabelNode = Extract<IrNode, { kind: 'label' }>;
 export type BgsetNode = Extract<IrNode, { kind: 'bgset' }>;
+export type CgsetNode = Extract<IrNode, { kind: 'cgset' }>;
 export type BssetNode = Extract<IrNode, { kind: 'bsset' }>;
 export type SelsetNode = Extract<IrNode, { kind: 'selset' }>;
 export type AudioNode = Extract<IrNode, { kind: 'audio' }>;
@@ -47,7 +48,6 @@ export function speakNode(
 export function diaNode(text: string): DiaNode {
   return { kind: 'dia', text };
 }
-
 export function bgsetNode(
   background: string,
   opts: { readonly variant?: number; readonly transition?: 'cross' | 'fade' | 'none' } = {},
@@ -56,6 +56,19 @@ export function bgsetNode(
   if (opts.variant !== undefined) node.variant = opts.variant;
   if (opts.transition !== undefined) node.transition = opts.transition;
   return node;
+}
+
+export function cgsetNode(
+  name: string,
+  opts: { readonly slot?: number; readonly mode?: number; readonly flag?: number } = {},
+): CgsetNode {
+  return {
+    kind: 'cgset',
+    name,
+    slot: opts.slot ?? 0,
+    mode: opts.mode ?? 5,
+    flag: opts.flag ?? 2,
+  };
 }
 
 export function bssetNode(fields: {

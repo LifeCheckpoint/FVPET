@@ -117,6 +117,7 @@ export function serializeProjectToDir(state: EditorState): ProjectDirData {
         const image = externalize(b.image);
         return { ...b, ...(image !== undefined ? { image } : {}) };
       }),
+      cgs: state.resources.cgs.map((c) => ({ ...c, image: externalize(c.image) ?? c.image })),
       audios: state.resources.audios.map((a) => {
         const src = externalize(a.src);
         return { ...a, ...(src !== undefined ? { src } : {}) };
@@ -169,6 +170,7 @@ export function deserializeProjectFromDir(
         const image = inline(b.image);
         return { ...b, ...(image !== undefined ? { image } : {}) };
       }),
+      cgs: state.resources.cgs.map((c) => ({ ...c, image: inline(c.image) ?? c.image })),
       audios: state.resources.audios.map((a) => {
         const src = inline(a.src);
         return { ...a, ...(src !== undefined ? { src } : {}) };

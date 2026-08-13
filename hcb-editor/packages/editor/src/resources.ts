@@ -61,6 +61,18 @@ export interface BackgroundResource {
   readonly image?: string;
 }
 
+/**
+ * 事件 CG 资源：与背景（编号引用）不同，CG 由 HCB 的「字符串名」引用
+ * （cgset 节点 push_string 大写名 → call f_000373a5）。
+ */
+export interface CgResource {
+  readonly id: string;
+  /** CG 资源名（大写，如 ASAHI_E011A1）。 */
+  readonly name: string;
+  /** CG 图片 data URL（全屏预览）。 */
+  readonly image: string;
+}
+
 export interface AudioResource {
   readonly id: string;
   readonly type: 'bgm' | 'voice' | 'se';
@@ -73,9 +85,10 @@ export interface AudioResource {
 export interface ProjectResources {
   readonly characters: readonly CharacterResource[];
   readonly backgrounds: readonly BackgroundResource[];
+  readonly cgs: readonly CgResource[];
   readonly audios: readonly AudioResource[];
 }
 
 export function emptyResources(): ProjectResources {
-  return { characters: [], backgrounds: [], audios: [] };
+  return { characters: [], backgrounds: [], cgs: [], audios: [] };
 }
