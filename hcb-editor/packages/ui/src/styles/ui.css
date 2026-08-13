@@ -938,6 +938,41 @@
   color: var(--text-faint);
 }
 
+.preview__engine {
+  flex: none;
+  height: 20px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  background: var(--bg-raised);
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+}
+
+.preview__engine--real {
+  color: var(--success, #4caf7d);
+  border-color: var(--success, #4caf7d);
+}
+
+.preview__engine--error {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.preview__engine-error {
+  padding: 7px 10px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--danger);
+  background: var(--bg-raised);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  word-break: break-all;
+}
+
 .preview__labels {
   display: flex;
   flex-wrap: wrap;

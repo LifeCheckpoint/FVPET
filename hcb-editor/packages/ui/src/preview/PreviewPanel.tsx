@@ -1,17 +1,24 @@
 /**
  * 预览面板：Pixi 自绘 prim + 文本覆盖 + G[] 面板 + 点击推进。
- * 由 FakeEngine 驱动（buildPreviewScript 从当前文档生成脚本）。
+ *
+ * 文本队列由编辑器投影（buildPreviewScript）提供；prim 有两级来源：
+ *   1. 真实引擎（Electron 下经 window.rfvp 桥 → rfvp-cli）执行编译产物，
+ *      回放 draw_solid 矩形作为 prim；缺桥 / 编译失败时回退。
+ *   2. 回退：FakeScript.prims 的占位矩形（标注角色名）。
+ *
  * 预览保持游戏原始比例（4:3 / 16:9），画布自适应右栏宽度，不拉伸溢出。
- * 立绘为占位矩形并标注角色名，作为「所见即所得」的轻量替代，真实 CG 由引擎回放补足。
  *
  * pixi 采用懒加载：仅在组件挂载（浏览器）时求值，避免 barrel import
  * 在 jsdom 测试环境触发 canvas 能力检测。
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { FakeEngine, type FakePrim, type FakeScript, type RfvpEvent } from '@hcb-editor/rfvp';
 import type { EditorState } from '@hcb-editor/editor';
+import type { FakePrim, FakeScript, RfvpEvent } from '@hcb-editor/rfvp';
 import { buildPreviewScript } from './buildPreviewScript.js';
+import { loadBaseBinary } from './baseBinary.js';
+import { compileEditorState } from './compileFromState.js';
+import { RfvpClient } from './RfvpClient.js';
 import type { PreviewRatio } from '../preferences/preferences.js';
 
 // pixi 懒加载：需要模块命名空间类型，内联 import() 类型是唯一途径。
@@ -41,8 +48,10 @@ function drawPrims(
 ): void {
   app.stage.removeChildren().forEach((child) => child.destroy());
   for (const prim of prims) {
+    const w = prim.w && prim.w > 0 ? prim.w : PRIM_W;
+    const h = prim.h && prim.h > 0 ? prim.h : PRIM_H;
     const g = new Graphics();
-    g.roundRect(prim.x, prim.y, PRIM_W, PRIM_H, 6);
+    g.roundRect(prim.x, prim.y, w, h, 6);
     g.fill({ color: PRIM_COLOR, alpha: prim.alpha });
     g.stroke({ color: 0x5b6b84, width: 1, alpha: prim.alpha });
     g.zIndex = prim.z;
@@ -56,8 +65,8 @@ function drawPrims(
         style: { fontSize: 13, fill: 0xc4ccd6, fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif' },
       });
       label.anchor.set(0.5, 0);
-      label.x = prim.x + PRIM_W / 2;
-      label.y = prim.y + PRIM_H + 8;
+      label.x = prim.x + w / 2;
+      label.y = prim.y + h + 8;
       label.zIndex = prim.z;
       app.stage.addChild(label);
     }
@@ -70,19 +79,80 @@ export interface PreviewPanelProps {
   readonly onLocate?: (nodeId: string) => void;
 }
 
+type EngineMode = 'fake' | 'real' | 'error';
+
+const ENGINE_LABEL: Record<EngineMode, string> = {
+  fake: '演示引擎',
+  real: '真实引擎',
+  error: '引擎错误（回退演示）',
+};
+
 export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<AppInstance | null>(null);
   const graphicsRef = useRef<GraphicsCtor | null>(null);
   const textRef = useRef<TextCtor | null>(null);
   const primsRef = useRef<readonly FakePrim[]>([]);
-  const engineRef = useRef<FakeEngine>(new FakeEngine());
+
+  const clientRef = useRef<RfvpClient | null>(null);
+  if (clientRef.current === null) {
+    clientRef.current = new RfvpClient();
+  }
+
+  const textsRef = useRef<readonly { readonly text: string; readonly speaker?: string }[]>([]);
+  const cursorRef = useRef(0);
+  const engineReadyRef = useRef(false);
 
   const [text, setText] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [globals, setGlobals] = useState<Readonly<Record<number, unknown>>>({});
+  const [engineMode, setEngineMode] = useState<EngineMode>(() =>
+    clientRef.current!.supported ? 'real' : 'fake',
+  );
+  const [engineError, setEngineError] = useState<string | null>(null);
 
   const [width, height] = ratio === '16:9' ? [640, 360] : [640, 480];
+
+  const applyEvents = useCallback((events: readonly RfvpEvent[]) => {
+    for (const ev of events) {
+      switch (ev.type) {
+        case 'text':
+          setText(ev.text);
+          setDone(false);
+          break;
+        // 真实引擎降级（tick 失败 / 进程退出）后，引擎的 done/prims 不可信，
+        // 文本与回退 prim 改由投影队列驱动，故这里忽略引擎的终局与图元事件。
+        case 'done':
+          if (engineReadyRef.current) {
+            setDone(true);
+          }
+          break;
+        case 'g':
+          setGlobals((prev) => ({ ...prev, [ev.index]: ev.value }));
+          break;
+        case 'prims': {
+          if (!engineReadyRef.current) {
+            break;
+          }
+          primsRef.current = ev.prims;
+          const app = appRef.current;
+          const Graphics = graphicsRef.current;
+          const Text = textRef.current;
+          if (app && Graphics && Text) {
+            drawPrims(app, Graphics, Text, ev.prims);
+          }
+          break;
+        }
+        case 'error':
+          engineReadyRef.current = false;
+          setEngineMode('error');
+          setEngineError(ev.message);
+          break;
+        default:
+          break;
+      }
+    }
+  }, []);
 
   // 初始化 / 销毁 Pixi（懒加载）
   useEffect(() => {
@@ -121,14 +191,69 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
     };
   }, [width, height]);
 
-  // 文档变化 → 重载 FakeEngine 脚本并重绘 prim
+  // 订阅真实引擎事件（prim / done / error）
+  useEffect(() => {
+    const client = clientRef.current!;
+    const offEvent = client.subscribe((ev) => {
+      applyEvents([ev]);
+    });
+    const offExit = client.subscribeExit(() => {
+      engineReadyRef.current = false;
+      setEngineMode('error');
+      setEngineError('真实引擎进程已退出，已回退演示引擎');
+    });
+    return () => {
+      offEvent();
+      offExit();
+    };
+  }, [applyEvents]);
+
+  // 文档变化 → 重算投影队列 + 重载真实引擎 + 重绘回退 prim
   useEffect(() => {
     const script: FakeScript = buildPreviewScript(state.document, state.header);
-    engineRef.current.load(script);
+    textsRef.current = script.texts;
+    cursorRef.current = 0;
     primsRef.current = script.prims ?? [];
     setText(null);
     setDone(false);
     setGlobals({});
+    setEngineError(null);
+
+    const client = clientRef.current!;
+    let mode: EngineMode = 'fake';
+    engineReadyRef.current = false;
+if (client.supported) {
+  try {
+    const hasContent = state.document.nodes.some(
+      (n) => n.id !== state.document.startNodeId && n.node.kind !== 'label',
+    );
+    if (!hasContent) {
+      mode = 'fake';
+    } else {
+      mode = 'real';
+      void loadBaseBinary(state.header.game)
+        .then((baseData) => {
+          const bytes = compileEditorState(state, baseData);
+          return client.load(bytes, state.header.nls);
+        })
+        .then(() => {
+          engineReadyRef.current = true;
+          setEngineMode('real');
+          setEngineError(null);
+        })
+        .catch((err: unknown) => {
+          engineReadyRef.current = false;
+          setEngineMode('error');
+          setEngineError(err instanceof Error ? err.message : String(err));
+        });
+    }
+  } catch (err) {
+    mode = 'error';
+    setEngineError(err instanceof Error ? err.message : String(err));
+  }
+}
+    setEngineMode(mode);
+
     const app = appRef.current;
     const Graphics = graphicsRef.current;
     const Text = textRef.current;
@@ -137,42 +262,30 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
     }
   }, [state.document, state.header]);
 
-  const applyEvents = useCallback((events: readonly RfvpEvent[]) => {
-    for (const ev of events) {
-      switch (ev.type) {
-        case 'text':
-          setText(ev.text);
-          setDone(false);
-          break;
-        case 'done':
-          setDone(true);
-          break;
-        case 'g':
-          setGlobals((prev) => ({ ...prev, [ev.index]: ev.value }));
-          break;
-        case 'prims': {
-          primsRef.current = ev.prims;
-          const app = appRef.current;
-          const Graphics = graphicsRef.current;
-          const Text = textRef.current;
-          if (app && Graphics && Text) {
-            drawPrims(app, Graphics, Text, ev.prims);
-          }
-          break;
-        }
-        default:
-          break;
-      }
+  const advance = useCallback(() => {
+    const client = clientRef.current!;
+    if (client.supported && engineReadyRef.current) {
+      void client.advance();
+    }
+    if (cursorRef.current < textsRef.current.length) {
+      const next = textsRef.current[cursorRef.current]!;
+      cursorRef.current += 1;
+      setText(next.text);
+      setDone(false);
+    } else {
+      setDone(true);
     }
   }, []);
 
-  const advance = useCallback(() => {
-    applyEvents(engineRef.current.advance());
-  }, [applyEvents]);
-
   const skip = useCallback(() => {
-    applyEvents(engineRef.current.skip());
-  }, [applyEvents]);
+    const client = clientRef.current!;
+    if (client.supported && engineReadyRef.current) {
+      void client.skip();
+    }
+    cursorRef.current = textsRef.current.length;
+    setText(null);
+    setDone(true);
+  }, []);
 
   const labels = state.document.nodes.filter((n) => n.node.kind === 'label');
 
@@ -180,8 +293,10 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
     <div className="preview">
       <div className="preview__toolbar">
         <button type="button" className="topbar-btn" onClick={skip}>跳过</button>
+        <span className={`preview__engine preview__engine--${engineMode}`}>{ENGINE_LABEL[engineMode]}</span>
         <span className="preview__toolbar-hint">点击画面推进</span>
       </div>
+      {engineError && <div className="preview__engine-error">{engineError}</div>}
       <div className="preview__stage" ref={hostRef} onClick={advance}>
         <div className="preview__stage-hint">{text === null && !done ? '点击推进' : ''}</div>
       </div>

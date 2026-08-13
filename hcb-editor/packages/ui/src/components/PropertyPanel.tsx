@@ -3,6 +3,8 @@
  * 通过 editNode 命令全量替换节点；分支 then/else 由流程图连线决定，此处只读展示。
  */
 
+import { useMemo } from 'react';
+import { availableBaseBackgrounds, availableBaseCharacters } from '@hcb-editor/compiler';
 import type { EditorState } from '@hcb-editor/editor';
 import type { EditorStore } from '@hcb-editor/editor';
 import { nodeKindLabel } from '../theme/meta.js';
@@ -35,6 +37,13 @@ function mergeSpeak(
 }
 
 export function PropertyPanel({ state, store }: PropertyPanelProps) {
+  const baseCharacters = useMemo(() => availableBaseCharacters(state.header.game), [state.header.game]);
+  const baseBackgrounds = useMemo(() => availableBaseBackgrounds(state.header.game), [state.header.game]);
+  const projectCharacters = useMemo(() => state.resources.characters.map((c) => c.name), [state.resources.characters]);
+  const projectBackgrounds = useMemo(() => state.resources.backgrounds.map((b) => b.name), [state.resources.backgrounds]);
+  const speakerOptions = useMemo(() => [...new Set([...baseCharacters, ...projectCharacters])], [baseCharacters, projectCharacters]);
+  const backgroundOptions = useMemo(() => [...new Set([...baseBackgrounds, ...projectBackgrounds])], [baseBackgrounds, projectBackgrounds]);
+
   const selectedId = state.selection.nodeId;
   const docNode = selectedId ? state.document.nodes.find((n) => n.id === selectedId) : undefined;
 
@@ -71,11 +80,22 @@ export function PropertyPanel({ state, store }: PropertyPanelProps) {
         </div>
       </div>
 
+      <datalist id="hcb-speakers">
+        {speakerOptions.map((name) => (
+          <option key={name} value={name} />
+        ))}
+      </datalist>
+      <datalist id="hcb-backgrounds">
+        {backgroundOptions.map((name) => (
+          <option key={name} value={name} />
+        ))}
+      </datalist>
+
       {node.kind === 'speak' && (
         <>
           <label className="pp__field">
             <span className="pp__label">角色</span>
-            <input className="pp__input" value={node.speaker} onChange={(e) => edit(mergeSpeak(node, { speaker: e.target.value }))} />
+            <input className="pp__input" list="hcb-speakers" value={node.speaker} onChange={(e) => edit(mergeSpeak(node, { speaker: e.target.value }))} />
           </label>
           <label className="pp__field">
             <span className="pp__label">别名</span>
@@ -116,7 +136,7 @@ export function PropertyPanel({ state, store }: PropertyPanelProps) {
         <>
           <label className="pp__field">
             <span className="pp__label">背景</span>
-            <input className="pp__input" value={node.background} onChange={(e) => edit({ ...node, background: e.target.value })} />
+            <input className="pp__input" list="hcb-backgrounds" value={node.background} onChange={(e) => edit({ ...node, background: e.target.value })} />
           </label>
           <label className="pp__field">
             <span className="pp__label">变体编号</span>
@@ -209,7 +229,7 @@ export function PropertyPanel({ state, store }: PropertyPanelProps) {
         <>
           <label className="pp__field">
             <span className="pp__label">角色</span>
-            <input className="pp__input" value={node.character} onChange={(e) => edit({ ...node, character: e.target.value })} />
+            <input className="pp__input" list="hcb-speakers" value={node.character} onChange={(e) => edit({ ...node, character: e.target.value })} />
           </label>
           <label className="pp__field">
             <span className="pp__label">姿势 pose</span>

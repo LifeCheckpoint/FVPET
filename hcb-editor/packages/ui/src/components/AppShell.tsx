@@ -5,8 +5,9 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
-import { compileProject } from '@hcb-editor/compiler';
-import { deserializeProject, projectToIr, serializeProject } from '@hcb-editor/editor';
+import { deserializeProject, serializeProject } from '@hcb-editor/editor';
+import { loadBaseBinary } from '../preview/baseBinary.js';
+import { compileEditorState } from '../preview/compileFromState.js';
 import { useEditorStore } from '../store/useEditorStore.js';
 import { usePreferences } from '../preferences/usePreferences.js';
 import { Palette } from './Palette.js';
@@ -72,11 +73,11 @@ export function AppShell() {
       store.load(deserializeProject(text));
     });
   };
-
-  const exportHcb = () => {
+const exportHcb = () => {
+  void (async () => {
     try {
-      const ir = projectToIr(state.document, state.header);
-      const bytes = compileProject(ir, state.header.nls);
+      const baseData = await loadBaseBinary(state.header.game);
+      const bytes = compileEditorState(state, baseData);
       const buffer = new ArrayBuffer(bytes.length);
       new Uint8Array(buffer).set(bytes);
       const blob = new Blob([buffer], { type: 'application/octet-stream' });
@@ -86,9 +87,15 @@ export function AppShell() {
       anchor.download = 'project.hcb';
       anchor.click();
       URL.revokeObjectURL(url);
+      if (!baseData) {
+        window.alert('已导出脚本-only 产物（不含底座库，不可独立运行）。请在 Electron 中配置底座游戏 HCB 以导出可运行 .hcb。');
+      }
     } catch (err) {
-      window.alert(`编译失败：${err instanceof Error ? err.message : String(err)}`);
+      window.alert(
+        `编译失败：${err instanceof Error ? err.message : String(err)}（角色/背景需存在于底座或资源管理器中）`,
+      );
     }
+  })();
   };
 
   return (
