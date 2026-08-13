@@ -61,8 +61,8 @@ describe('template golden', () => {
       ],
     };
     const { labels } = compileProjectDetailed(ir, 'sjis');
-    // 第一个 label 位于代码区起点（4 字节头之后）。
-    expect(labels.get('start')).toBe(4);
-    expect(labels.get('loop')).toBeGreaterThan(4);
+    // 入口函数 prologue init_stack 占 3 字节，第一个 label 位于其后（4 + 3 = 7）。
+    expect(labels.get('start')).toBe(7);
+    expect(labels.get('loop')).toBeGreaterThan(7);
   });
 });

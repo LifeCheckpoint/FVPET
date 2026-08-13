@@ -38,7 +38,9 @@ export function encodeInstruction(inst: Instruction, oldToNew: ReadonlyMap<numbe
     case 'jmp':
     case 'jz':
       if (a.kind === 'x32') {
-        w.u32(oldToNew.get(a.target) ?? a.target);
+        // 仅脚本内部 label 引用按新基址重定位；底座库函数地址原样写出（避免与脚本旧地址 4/6/... 碰撞）。
+        const target = inst.addressRole === 'label_ref' ? (oldToNew.get(a.target) ?? a.target) : a.target;
+        w.u32(target);
       }
       break;
     case 'syscall':

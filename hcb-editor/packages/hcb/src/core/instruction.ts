@@ -29,8 +29,13 @@ export interface Instruction {
   readonly size: number;
   /** 原始字节副本（round-trip 原样保留用） */
   readonly rawBytes: Uint8Array;
-  /** ThreadStart 前的 push_i32 立即数按函数地址处理 */
-  addressRole?: 'thread_start_function_pointer';
+  /**
+   * 地址语义标记：
+   * - thread_start_function_pointer：ThreadStart 前的 push_i32 立即数按函数地址处理；
+   * - label_ref：call/jmp/jz 的目标是脚本内部 label（相对代码区偏移），编码时需按新基址重定位；
+   *   未标记的 call/jmp/jz 目标为绝对函数地址（底座库函数），编码时原样写出、不重定位。
+   */
+  addressRole?: 'thread_start_function_pointer' | 'label_ref';
 }
 
 export interface FunctionInfo {

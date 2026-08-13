@@ -54,6 +54,9 @@ function condToAsm(cond: CondExpr): AsmInstruction[] {
 
 export function lower(ir: IrScript, ctx: TemplateCtx): AsmBlock[] {
   const blocks: AsmBlock[] = [];
+  // 入口函数 prologue：init_stack 建立栈帧（与 hcb_build.py 的 header_bytes 一致：args=0, locals=0）。
+  // 缺失会导致导出脚本不被识别为函数、entry_point 落入上一个库函数内部。
+  blocks.push({ instructions: [{ op: 'init_stack', args: 0, locals: 0 }] });
   for (const node of ir.nodes) {
     switch (node.kind) {
       case 'label':

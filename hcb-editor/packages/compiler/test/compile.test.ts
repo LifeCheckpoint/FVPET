@@ -120,7 +120,7 @@ describe('compile pipeline (synthetic, CI-independent)', () => {
     expect(jmp).toBeDefined();
     expect(jmp!.args.kind).toBe('x32');
     if (jmp!.args.kind === 'x32') {
-      expect(jmp!.args.target).toBe(9); // start(4) + raw(5 字节) = end 地址 9
+      expect(jmp!.args.target).toBe(12); // init_stack(3) + start(7) + raw(5 字节) = end 地址 12
     }
   });
 

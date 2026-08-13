@@ -11,7 +11,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { decodeHcb } from '@hcb-editor/hcb/decompile';
 import type { IrScript } from '@hcb-editor/hcb/ir';
-import { compileProject } from '../src/base/index.js';
+import { compileProject, loadBaseGame } from '../src/base/index.js';
 
 const BASE = path.resolve(process.cwd(), '../../../.reference_repo/fvpanalysis/hcbtool_test/Sakura.hcb');
 
@@ -56,5 +56,26 @@ describe.skipIf(!fs.existsSync(BASE))('compileProject with local base binary', (
       .filter((i) => i.mnemonic === 'push_string' && i.args.kind === 'string')
       .map((i) => i.args.text.replace(/[\u3000 ]/g, ''));
     expect(texts).toContain('小明');
+  });
+
+  it('appended script has init_stack prologue and preserves base function call addresses', () => {
+    const baseData = new Uint8Array(fs.readFileSync(BASE));
+    const bytes = compileProject(speakScript('クロ'), 'sjis', { baseData });
+    const decoded = decodeHcb(bytes, 'sjis');
+
+    // 入口函数必须以 init_stack 开头（否则不被识别为函数）。
+    const entry = decoded.instructions.find((i) => i.addr === decoded.sysdesc.entryPoint);
+    expect(entry).toBeDefined();
+    expect(entry!.mnemonic).toBe('init_stack');
+
+    // 追加脚本中的 speak call 必须指向底座库函数地址（クロ speakFn），
+    // 不得因重定位键碰撞（脚本旧地址 4 与库函数地址 4 重合）而被改写为脚本起点。
+    const croSpeakFn = loadBaseGame('sakura-moyu').tables.characters['クロ']?.speakFn;
+    expect(croSpeakFn).toBeDefined();
+    const appendedCalls = decoded.instructions
+      .filter((i) => i.addr >= decoded.sysdesc.entryPoint && i.mnemonic === 'call' && i.args.kind === 'x32')
+      .map((i) => (i.args.kind === 'x32' ? i.args.target : -1));
+    expect(appendedCalls).toContain(croSpeakFn);
+    expect(appendedCalls).not.toContain(decoded.sysdesc.entryPoint);
   });
 });

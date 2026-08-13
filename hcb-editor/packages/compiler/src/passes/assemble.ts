@@ -121,6 +121,7 @@ function expandInstruction(
   nls: Nls,
 ): Instruction {
   const w = new ByteWriter();
+  let addressRole: 'label_ref' | undefined;
   switch (ins.op) {
     case 'init_stack':
       w.u8(opcodeOfMnemonic('init_stack')).i8(ins.args).i8(ins.locals);
@@ -128,6 +129,11 @@ function expandInstruction(
     case 'call':
     case 'jmp':
     case 'jz':
+      // 目标是脚本内部 label（相对偏移）时标记，编码阶段据此重定位；
+      // 目标是 f_/绝对函数地址（底座库函数）时不标记，编码阶段原样写出。
+      if (labelAddr.has(ins.target)) {
+        addressRole = 'label_ref';
+      }
       w.u8(opcodeOfMnemonic(ins.op)).u32(resolveTarget(ins.target, labelAddr));
       break;
     case 'syscall': {
@@ -215,6 +221,7 @@ function expandInstruction(
     args: decodeArgs(ins.op, bytes, nls),
     size: bytes.length,
     rawBytes: bytes,
+    ...(addressRole !== undefined ? { addressRole } : {}),
   };
 }
 
