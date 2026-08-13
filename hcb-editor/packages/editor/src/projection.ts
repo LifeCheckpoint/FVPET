@@ -7,7 +7,7 @@
  */
 
 import type { CondExpr, IrNode, IrScript } from '@hcb-editor/hcb/ir';
-import type { DocNode, EditorDocument } from './state.js';
+import type { DocEdge, DocNode, EditorDocument } from './state.js';
 
 function labelNameOf(document: EditorDocument, nodeId: string): string {
   const target = document.nodes.find((n) => n.id === nodeId);
@@ -214,6 +214,10 @@ function lineText(node: DocNode, document: EditorDocument): string[] {
       const target = edge ? labelNameOf(document, edge.target) : n.target;
       return [`jump ${target}`];
     }
+    case 'wait':
+      return [`wait ${n.ms}`];
+    case 'msgset':
+      return [`msg ${n.position}`];
     case 'raw':
       return [`# raw（未识别演出块 · ${n.bytes.byteLength} 字节）`];
     case 'comment':
@@ -250,8 +254,62 @@ export function projectScript(document: EditorDocument): ScriptLine[] {
 export interface TimelineItem {
   readonly nodeId: string;
   readonly kind: IrNode['kind'];
+  /** 路径深度：0 = 主线，>0 = 分支/并行子路径。 */
+  readonly depth: number;
+  /** 分支来源标记（then / else / thread / jump），主线为 undefined。 */
+  readonly branchLabel?: string;
 }
 
+/**
+ * 时间线投影：从 START 沿 next 主线深度优先展开，then/else/thread/jump
+ * 作为子路径（深度 +1，带来源标记）插入。visited 去重避免 jump 回环。
+ */
 export function projectTimeline(document: EditorDocument): TimelineItem[] {
-  return linearize(document).map((docNode) => ({ nodeId: docNode.id, kind: docNode.node.kind }));
+  const nodesById = new Map(document.nodes.map((n) => [n.id, n]));
+  const outEdges = new Map<string, DocEdge[]>();
+  for (const e of document.edges) {
+    const list = outEdges.get(e.source);
+    if (list) {
+      list.push(e);
+    } else {
+      outEdges.set(e.source, [e]);
+    }
+  }
+
+  const visited = new Set<string>();
+  const items: TimelineItem[] = [];
+
+  const walk = (nodeId: string, depth: number, branchLabel?: string): void => {
+    if (visited.has(nodeId)) {
+      return;
+    }
+    const docNode = nodesById.get(nodeId);
+    if (!docNode) {
+      return;
+    }
+    visited.add(nodeId);
+    items.push({
+      nodeId,
+      kind: docNode.node.kind,
+      depth,
+      ...(branchLabel !== undefined ? { branchLabel } : {}),
+    });
+
+    const edges = outEdges.get(nodeId) ?? [];
+    // 主线（next）优先展开，保持剧情主体顺序。
+    for (const e of edges) {
+      if (e.kind === 'next') {
+        walk(e.target, depth, undefined);
+      }
+    }
+    // 控制流边（then/else/thread/jump）作为子路径展开。
+    for (const e of edges) {
+      if (e.kind !== 'next') {
+        walk(e.target, depth + 1, e.kind);
+      }
+    }
+  };
+
+  walk(document.startNodeId, 0, undefined);
+  return items;
 }

@@ -24,6 +24,8 @@ export type AudioNode = Extract<IrNode, { kind: 'audio' }>;
 export type BranchNode = Extract<IrNode, { kind: 'branch' }>;
 export type ThreadNode = Extract<IrNode, { kind: 'thread' }>;
 export type JumpNode = Extract<IrNode, { kind: 'jump' }>;
+export type WaitNode = Extract<IrNode, { kind: 'wait' }>;
+export type MsgsetNode = Extract<IrNode, { kind: 'msgset' }>;
 export type RawNode = Extract<IrNode, { kind: 'raw' }>;
 export type CommentNode = Extract<IrNode, { kind: 'comment' }>;
 
@@ -108,6 +110,14 @@ export function threadNode(slot: number, entry: string): ThreadNode {
 
 export function jumpNode(target: string): JumpNode {
   return { kind: 'jump', target };
+}
+
+export function waitNode(ms: number): WaitNode {
+  return { kind: 'wait', ms };
+}
+
+export function msgsetNode(position: MsgsetNode['position']): MsgsetNode {
+  return { kind: 'msgset', position };
 }
 
 export function commentNode(text: string): CommentNode {

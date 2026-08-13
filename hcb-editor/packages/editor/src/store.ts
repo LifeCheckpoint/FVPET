@@ -22,9 +22,12 @@ export class EditorStore {
   private undoStack: PatchPair[] = [];
   private redoStack: PatchPair[] = [];
   private listeners = new Set<StoreListener>();
+  /** 保存点 = 保存/载入时的 undo 栈深度；dirty 通过栈深度差判定（undo/redo 会同步栈深度）。 */
+  private savedUndoDepth = 0;
 
   constructor(initial: EditorState) {
     this.state = initial;
+    this.savedUndoDepth = 0;
   }
 
   get current(): EditorState {
@@ -47,11 +50,18 @@ export class EditorStore {
     this.emit();
   }
 
-  /** 整体载入工程（新建 / 打开），清空撤销历史。 */
+  /** 整体载入工程（新建 / 打开），清空撤销历史，并视为已保存（clean）。 */
   load(state: EditorState): void {
     this.state = state;
     this.undoStack = [];
     this.redoStack = [];
+    this.savedUndoDepth = 0;
+    this.emit();
+  }
+
+  /** 标记当前状态为「已保存」（dirty 归零）。 */
+  markSaved(): void {
+    this.savedUndoDepth = this.undoStack.length;
     this.emit();
   }
 
@@ -83,6 +93,11 @@ export class EditorStore {
 
   get canRedo(): boolean {
     return this.redoStack.length > 0;
+  }
+
+  /** 是否存在自上次保存/载入以来的未保存改动。 */
+  get isDirty(): boolean {
+    return this.undoStack.length !== this.savedUndoDepth;
   }
 
   private emit(): void {
