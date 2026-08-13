@@ -4,6 +4,7 @@
  * 约定：gbk 统一按 gb18030 处理（与 Python 侧 NLS_CODECS['gbk'] = 'gb18030' 一致）。
  */
 
+import { Buffer } from 'buffer';
 import iconv from 'iconv-lite';
 
 export type Nls = 'sjis' | 'gbk' | 'utf8';
