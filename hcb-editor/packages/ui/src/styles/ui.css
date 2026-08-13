@@ -2162,6 +2162,31 @@
   white-space: nowrap;
 }
 
+/* ---------------------------------------------------------------- 预览选项浮层（selset） */
+.preview__choices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.preview__choice {
+  width: 100%;
+  padding: 9px 12px;
+  font-size: 12.5px;
+  text-align: left;
+  color: var(--text-primary);
+  background: var(--bg-raised);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.preview__choice:hover {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+
 /* ---------------------------------------------------------------- 面板分隔条（可拖拽调节） */
 .app__resizer {
   flex: none;

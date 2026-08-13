@@ -27,6 +27,35 @@ describe('buildPreviewScript', () => {
     expect(script.prims[0]!.label).toBe('クロ');
   });
 
+  it('projects selset choices and speak voice into the text queue', () => {
+    let state = emptyState();
+    const startId = state.document.startNodeId;
+    state = applyCommand(state, {
+      kind: 'add_node',
+      node: { kind: 'selset', choices: [{ text: '去学校', label: 'go_school' }, { text: '回家', label: 'go_home' }], resultGlobal: 103 },
+      position: { x: 100, y: 0 },
+    }).next;
+    const selId = state.selection.nodeId!;
+    state = applyCommand(state, {
+      kind: 'add_node',
+      node: { kind: 'speak', speaker: 'クロ', text: '你好', voice: 3 },
+      position: { x: 200, y: 0 },
+    }).next;
+    const speakId = state.selection.nodeId!;
+    state = applyCommand(state, { kind: 'connect', source: startId, target: selId, kind2: 'next' }).next;
+    state = applyCommand(state, { kind: 'connect', source: selId, target: speakId, kind2: 'next' }).next;
+    state = applyCommand(state, {
+      kind: 'add_audio',
+      audio: { type: 'voice', number: 3, label: 'voice3', src: 'data:audio/x;base64,AAA' },
+    }).next;
+
+    const script = buildPreviewScript(state.document, state.header, state.resources);
+    expect(script.texts).toEqual([
+      { text: '请选择：', choices: ['去学校', '回家'] },
+      { text: '你好', speaker: 'クロ', audioSrc: 'data:audio/x;base64,AAA' },
+    ]);
+  });
+
   it('uses the projected IR ordering', () => {
     const state = emptyState();
     const ir = projectToIr(state.document, state.header);

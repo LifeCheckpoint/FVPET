@@ -41,7 +41,13 @@ export interface FakePrim {
 }
 
 export interface FakeScript {
-  readonly texts: readonly { readonly text: string; readonly speaker?: string; readonly audioSrc?: string }[];
+  readonly texts: readonly {
+    readonly text: string;
+    readonly speaker?: string;
+    readonly audioSrc?: string;
+    /** selset 的选项文本（预览渲染为可点击选项浮层）。 */
+    readonly choices?: readonly string[];
+  }[];
   readonly globals?: Readonly<Record<number, unknown>>;
   readonly prims?: readonly FakePrim[];
 }

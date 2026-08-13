@@ -58,12 +58,22 @@ export function buildPreviewScript(
 
   for (const node of ir.nodes) {
     if (node.kind === 'speak') {
-      texts.push({ text: node.text, speaker: node.speaker });
+      const voiceAudio =
+        node.voice !== undefined
+          ? resources?.audios.find((a) => a.type === 'voice' && a.number === node.voice)
+          : undefined;
+      texts.push({
+        text: node.text,
+        speaker: node.speaker,
+        ...(voiceAudio?.src !== undefined ? { audioSrc: voiceAudio.src } : {}),
+      });
     } else if (node.kind === 'dia') {
       texts.push({ text: node.text });
     } else if (node.kind === 'audio') {
       const audio = resources?.audios.find((a) => a.type === node.type && a.number === node.channelOrNum);
       texts.push({ text: '', ...(audio?.src !== undefined ? { audioSrc: audio.src } : {}) });
+    } else if (node.kind === 'selset') {
+      texts.push({ text: '请选择：', choices: node.choices.map((c) => c.text) });
     } else if (node.kind === 'bgset') {
       const bg = resources?.backgrounds.find((b) => b.name === node.background);
       if (bg?.image) {

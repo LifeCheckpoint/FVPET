@@ -138,6 +138,7 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
   const engineReadyRef = useRef(false);
 
   const [text, setText] = useState<string | null>(null);
+  const [choices, setChoices] = useState<readonly string[] | null>(null);
   const [done, setDone] = useState(false);
   const [globals, setGlobals] = useState<Readonly<Record<number, unknown>>>({});
   const [engineMode, setEngineMode] = useState<EngineMode>(() =>
@@ -265,6 +266,7 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
     cursorRef.current = 0;
     primsRef.current = script.prims ?? [];
     setText(null);
+    setChoices(null);
     setDone(false);
     setGlobals({});
     setEngineError(null);
@@ -336,6 +338,7 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
       const next = textsRef.current[cursorRef.current]!;
       cursorRef.current += 1;
       setText(next.text);
+      setChoices(next.choices ?? null);
       setDone(false);
       if (next.audioSrc) {
         const audio = new Audio(next.audioSrc);
@@ -353,6 +356,7 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
     }
     cursorRef.current = textsRef.current.length;
     setText(null);
+    setChoices(null);
     setDone(true);
   }, []);
 
@@ -373,6 +377,15 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
         {done ? '（完）' : text ?? ''}
         {audioHint && <span className="preview__audio-hint">{audioHint}</span>}
       </div>
+      {choices !== null && choices.length > 0 && (
+        <div className="preview__choices">
+          {choices.map((c, i) => (
+            <button type="button" className="preview__choice" key={i} onClick={advance}>
+              {c}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="preview__labels">
         <div className="preview__globals-title">label 断点</div>
         {labels.length === 0 ? (
