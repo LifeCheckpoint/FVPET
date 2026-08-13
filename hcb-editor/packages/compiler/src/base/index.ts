@@ -109,6 +109,8 @@ export interface CompileProjectOptions {
   extraCharacters?: readonly string[];
   /** 新增背景（资源表中 bgFn 为 null 者），共享加载函数，仅分配资源编号。 */
   extraBackgrounds?: readonly { readonly name: string; readonly number?: number }[];
+  /** 角色名 → 立绘编号（chaNum）映射，供 bsset 编译真实立绘编号。 */
+  characterChaNums?: Readonly<Record<string, number>>;
 }
 
 /** Sakura moyu 背景/立绘资源加载共享函数（无专用函数体时回退值）。 */
@@ -174,6 +176,15 @@ export function compileProjectDetailed(ir: IrScript, nls: Nls, opts: CompileProj
     const merged = { ...characters };
     for (const [name, addr] of addresses) {
       merged[name] = { speakFn: addr };
+    }
+    characters = merged;
+  }
+
+  // 立绘编号映射：把编辑器资源的 chaNum 合并进角色表（bsset 读 chaNum 用）。
+  if (opts.characterChaNums) {
+    const merged = { ...characters };
+    for (const [name, chaNum] of Object.entries(opts.characterChaNums)) {
+      merged[name] = { ...(merged[name] ?? { speakFn: 0 }), chaNum };
     }
     characters = merged;
   }

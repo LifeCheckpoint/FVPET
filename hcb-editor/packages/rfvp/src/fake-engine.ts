@@ -31,7 +31,7 @@ export interface FakePrim {
 }
 
 export interface FakeScript {
-  readonly texts: readonly { readonly text: string; readonly speaker?: string }[];
+  readonly texts: readonly { readonly text: string; readonly speaker?: string; readonly audioSrc?: string }[];
   readonly globals?: Readonly<Record<number, unknown>>;
   readonly prims?: readonly FakePrim[];
 }

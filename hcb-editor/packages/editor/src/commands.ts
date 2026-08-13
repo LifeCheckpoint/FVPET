@@ -28,12 +28,14 @@ export type Command =
   | { readonly kind: 'edit_node'; readonly id: string; readonly node: IrNode }
   | { readonly kind: 'select'; readonly nodeId: string | null }
   | { readonly kind: 'add_character'; readonly character: Omit<CharacterResource, 'id'> }
+  | { readonly kind: 'add_characters'; readonly characters: readonly Omit<CharacterResource, 'id'>[] }
   | { readonly kind: 'remove_character'; readonly id: string }
   | { readonly kind: 'edit_character'; readonly id: string; readonly character: CharacterResource }
   | { readonly kind: 'add_background'; readonly background: Omit<BackgroundResource, 'id'> }
   | { readonly kind: 'remove_background'; readonly id: string }
   | { readonly kind: 'edit_background'; readonly id: string; readonly background: BackgroundResource }
   | { readonly kind: 'add_audio'; readonly audio: Omit<AudioResource, 'id'> }
+  | { readonly kind: 'add_audios'; readonly audios: readonly Omit<AudioResource, 'id'>[] }
   | { readonly kind: 'remove_audio'; readonly id: string }
   | { readonly kind: 'edit_audio'; readonly id: string; readonly audio: AudioResource };
 
@@ -204,6 +206,14 @@ export function applyCommand(state: EditorState, cmd: Command): ApplyResult {
         draft.nextId += 1;
         break;
       }
+      case 'add_characters': {
+        for (const character of cmd.characters) {
+          const id = `c${draft.nextId}`;
+          draft.resources.characters.push({ id, ...character });
+          draft.nextId += 1;
+        }
+        break;
+      }
       case 'remove_character': {
         const idx = draft.resources.characters.findIndex((r) => r.id === cmd.id);
         if (idx >= 0) {
@@ -242,6 +252,14 @@ export function applyCommand(state: EditorState, cmd: Command): ApplyResult {
         const id = `a${draft.nextId}`;
         draft.resources.audios.push({ id, ...cmd.audio });
         draft.nextId += 1;
+        break;
+      }
+      case 'add_audios': {
+        for (const audio of cmd.audios) {
+          const id = `a${draft.nextId}`;
+          draft.resources.audios.push({ id, ...audio });
+          draft.nextId += 1;
+        }
         break;
       }
       case 'remove_audio': {
@@ -366,6 +384,10 @@ export function addCharacter(character: Omit<CharacterResource, 'id'>): Command 
   return { kind: 'add_character', character };
 }
 
+export function addCharacters(characters: readonly Omit<CharacterResource, 'id'>[]): Command {
+  return { kind: 'add_characters', characters };
+}
+
 export function removeCharacter(id: string): Command {
   return { kind: 'remove_character', id };
 }
@@ -388,6 +410,10 @@ export function editBackground(id: string, background: BackgroundResource): Comm
 
 export function addAudio(audio: Omit<AudioResource, 'id'>): Command {
   return { kind: 'add_audio', audio };
+}
+
+export function addAudios(audios: readonly Omit<AudioResource, 'id'>[]): Command {
+  return { kind: 'add_audios', audios };
 }
 
 export function removeAudio(id: string): Command {
