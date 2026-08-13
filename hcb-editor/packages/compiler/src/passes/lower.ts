@@ -77,6 +77,9 @@ export function lower(ir: IrScript, ctx: TemplateCtx): AsmBlock[] {
       case 'thread':
         blocks.push(...threadTemplate.instantiate(node, ctx));
         break;
+      case 'jump':
+        blocks.push({ instructions: [{ op: 'jmp', target: node.target }] });
+        break;
       case 'branch':
         blocks.push({
           instructions: [...condToAsm(node.cond), { op: 'jz', target: node.else }, { op: 'jmp', target: node.then }],
