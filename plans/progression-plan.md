@@ -14,13 +14,13 @@
 | M4-1 底座表数据化 + 导出编译 | 🟡 基本完成 | `extract-base` 提取 sysdesc(148 syscalls)+31 角色；`loadBaseGame/compileProject`；AppShell「导出 .hcb」；待背景表 + raw 补丁 |
 | M2-1 协议 schema | ✅ 完成 | [`protocol.ts`](hcb-editor/packages/rfvp/src/protocol.ts:1) zod 定义 + `PROTOCOL_VERSION=1` |
 | M2-2 FakeEngine | ✅ 完成 | [`fake-engine.ts`](hcb-editor/packages/rfvp/src/fake-engine.ts:1) 脚本驱动 + 事件回放，3 单测 |
-| M2-3 rfvp-cli（Rust）+ Electron 薄壳 | 🟡 rfvp-cli 已建 / 桥接待接 | rfvp 以 git submodule 集成（[`vendor/rfvp`](hcb-editor/vendor/rfvp/README.md:1)）；rfvp-cli（Rust）已构建、可 boot 真实 HCB 并输出 prim；contextBridge + RfvpProcessManager + UI 接入待做 |
+| M2-3 rfvp-cli（Rust）+ Electron 薄壳 | ✅ 完整闭环 | rfvp 以 git submodule 集成（[`vendor/rfvp`](hcb-editor/vendor/rfvp/README.md:1)）；rfvp-cli 可 boot + tick 编译产物（portable VM 未实现 syscall 已 no-op 兜底）；contextBridge + RfvpProcessManager + RfvpClient + PreviewPanel 接入完成，compileWithBase 打通可运行导出 |
 | M2-4 预览面板（Pixi） | 🟡 基本完成 | Pixi 自绘 prim + 文本覆盖 + G[] 面板 + 点击推进 + 跳过 + label 断点；立绘占位带角色名、画布自适应右栏宽度；缺真实 Event 回放 |
 | M3-S1 editor 包（命令集/状态层） | ✅ 完成 | 文档模型（START/END + startNodeId）+ 资源表 + 底座注册表 + 命令集 + 连线校验 + undo/redo + 可达性投影 + 工程文件序列化，30 单测 |
 | M3-S2 ui 包（React Flow） | 🟡 主体完成 | 主题/三栏 AppShell（左右栏加宽）/FlowCanvas/NodeCard/属性面板(全节点)/剧本文本/时间线/调色板(图标化)/资源管理器(卡片可视化)/新建向导/设置/保存打开/空画布引导，11 单测 |
 | M4 投影 / 补丁 / 迁移 | 🟡 大部分完成 | 剧本文本 + 时间线投影、raw 只读占位、IR 序列化 + schemaVersion 迁移、工程文件契约已落地；缺 raw 补丁 / 导出编译 |
 | 测试基建（Storybook + Playwright） | ✅ 完成 | ui 组件库 8 stories + e2e 冒烟 6 用例（chromium，FakeEngine 兜底） |
-| Electron 薄壳（desktop） | ✅ 可预览 | 主进程加载 Vite 演示壳，`dev` 一键拉起 vite + electron；真实引擎（rfvp-cli + contextBridge）留待 S4 |
+| Electron 薄壳（desktop） | ✅ 真实引擎桥已接 | 主进程加载 Vite 演示壳 + preload 暴露 `window.rfvp`；`dev` 一键拉起 vite + electron；真实引擎经 rfvp-cli 惰性拉起，渲染层缺桥/编译失败/引擎报错时自动回退 FakeEngine |
 
 **核心研判不变**：最险的领域部分（HCB 可逆转换）已 100% 达成，剩余风险集中在前端收尾、真实引擎封装与底座数据化。
 
@@ -72,11 +72,13 @@
 - 资源管理器：三表由纯表格改为卡片（头像占位 / 背景缩略图 / 音频类型徽章），技术字段（SPEAK 函数/pose/costume/face/bgFn）折叠为次要小字（[`ResourceManager.tsx`](hcb-editor/packages/ui/src/components/ResourceManager.tsx:1)）。
 - 预览立绘：`FakePrim.label` 携带角色名，Pixi 占位矩形下方标注（[`PreviewPanel.tsx`](hcb-editor/packages/ui/src/preview/PreviewPanel.tsx:1)）。
 
-### rfvp-cli（🟡 真实引擎，Rust）
+### rfvp-cli（✅ 真实引擎，Rust）+ 引擎桥（✅ 接入 / ⚠️ tick 待补底座）
 - rfvp 以 **git submodule** 集成到 [`hcb-editor/vendor/rfvp`](hcb-editor/vendor/rfvp/README.md:1)（上游 https://github.com/xmoezzz/rfvp），本地补丁：`lib.rs` 暴露 `pub mod portable` + 修复 portable 模块两处 `audio().play()` 缺 `fade_in_ms` 参数。
 - 新 crate [`hcb-editor/crates/rfvp-cli`](hcb-editor/crates/rfvp-cli/Cargo.toml:1)：封装 `PortableRuntime`，stdio 行分隔 JSON（hcb-editor 协议），no-op host + 渲染器捕获 `draw_solid` 作为 prim。
 - 已构建并冒烟验证：`handshake → load → dump_prims → shutdown` 全通；boot 真实 Sakura.hcb 得到标题与 1280×720 分辨率。
-- ⚠️ 已知限制：`PortableRuntime` 的 VM 对**完整 Sakura 脚本 tick 会失败**（`parser read_u8 out of bounds @0x36a79`，portable VM 为实验性实现）；对编辑器编译的小脚本是否可 tick 尚未验证（待用 `compileProject` 输出实测）。
+- Electron 主进程：新 [`rfvp-process-manager.ts`](hcb-editor/packages/apps/desktop/src/rfvp-process-manager.ts:1)（惰性 spawn rfvp-cli + 行分隔 JSON IO + `load` 落盘临时 .hcb 并等待 ready/error）＋ [`ipc.ts`](hcb-editor/packages/apps/desktop/src/ipc.ts:1)（`rfvp:load/advance/step/skip/dump-prims/shutdown` handle + 事件广播）＋ [`preload.ts`](hcb-editor/packages/apps/desktop/src/preload.ts:1)（`window.rfvp` 桥）。
+- 渲染层：新 [`RfvpClient.ts`](hcb-editor/packages/ui/src/preview/RfvpClient.ts:1) + [`rfvpBridge.ts`](hcb-editor/packages/ui/src/preview/rfvpBridge.ts:1)；[`PreviewPanel.tsx`](hcb-editor/packages/ui/src/preview/PreviewPanel.tsx:1) 编译 IR→HCB 后经桥装载，prim 事件驱动 Pixi，缺桥/编译失败/引擎报错自动回退 FakeEngine；文本队列始终由投影提供。
+- ⚠️ **tick 实测结论（2026-08-13）**：用编辑器 `compileProject` 产出的小脚本（ハル speak + dia）经 rfvp-cli **boot 成功**（`ready` + title + screenSize `[1280,720]`），但 `advance` 触发 `call target 0xb86(=speakFn 2950) outside code area` → tick `Backend` 失败。根因：`compileProject` 走 `compile`（仅脚本代码区，入口 4），而 speak 模板 `call` 指向底座库函数（角色表 speakFn），该库代码不在产物内；需 `compileWithBase`（patchBase 拼接底座库）或引擎侧提供底座库，方可真实 tick。桥接层已就绪，真实执行留待补底座库。
 
 ### 流程图交互（✅ 删除/连线 + START/END 模型）
 - 节点删除：`FlowCanvas` 补 `onNodesDelete` 派发 `remove_node`；START 节点 `deletable:false`，命令层也拒绝删除（[`commands.ts`](hcb-editor/packages/editor/src/commands.ts:117)）。属性面板新增「删除」按钮。
@@ -97,18 +99,69 @@
 
 ---
 
-## 2. 剩余差距（按优先级）
+## 2. 差距总盘点（按优先级 P0→P3）
 
-| # | 差距 | 说明 | 阻塞因素 |
+> 口径：`✅ 已落地` / `🟡 部分` / `⬜ 待做`。P0 = 阻断创作闭环，P1 = 主工作流体验，P2 = 补全与精度，P3 = 锦上添花。
+
+### P0 —— 阻断「新建 → 编辑 → 预览 → 导出」闭环
+
+| # | 差距 | 状态 | 说明 |
 |---|---|---|---|
-| 1 | **导出编译 .hcb（收尾）** | ✅ sysdesc(148)+31 角色+背景表（共享加载器 f_00037421 + 编号）已数据化，bgset 签名修正为 `push_i16 + call f_00037421`（309 命中）；UI 已接「导出 .hcb」。背景名仍为占位 `bg_<num>` | 背景真实名称需外部资源表或手工命名 |
-| 2 | **raw 补丁模式** | ✅ 完成：raw 字节透传 + 重定位重算（`assembleFlat`/`encodeFlatItems`）+ patchBase 拼接（`compileWithBase`，底座库代码逐字节保留、入口指向新脚本），7 单测覆盖 | — |
-| 3 | **增量编译** | ✅ 函数级编译原语已落地（[`splitIrFunctions/compileFunctionSegment`](hcb-editor/packages/compiler/src/passes/function.ts:1)，2 单测）；⬜ 地址保持式局部重编（HCB 地址连续，需 patchBase 两段拼接，实用性低）延后 | — |
-| 4 | **95% 命中率（剧情节点口径）重测** | ✅ 已补 audio/thread/wait/stage(演出)/branch/call/jump/control/input 模板 + 修正 SPEAK 函数族（数据驱动自角色表），可达指令覆盖率 **41.38% → 94.49%**（hits：dia 54955 / speak 19542 / stage 5181 / call 42310 / jump 4435 / control 38662 / branch 266 / input 192 / audio 117 / thread 92 / wait 49 / selset 3 / bgset 1）。剩余 5.5% 为孤立算术/立即数及 bgset 精确签名（背景表数据化待补） | — |
-| 5 | **S4 真实引擎 + Electron** | ✅ Electron 薄壳已建（desktop 包）；✅ rfvp-cli（Rust）已构建并可 boot/输出 prim；⬜ RfvpProcessManager + contextBridge + UI 接入；⬜ 小脚本 tick 验证（portable VM 对完整 Sakura tick 失败） | — |
-| 6 | **Storybook + Playwright** | ✅ 完成：组件库 8 stories + e2e 冒烟 6 用例（chromium 已下载、webServer 自动拉起演示壳） | — |
-| 7 | **演出块签名精确化** | Motion/Prim/GraphLoad 等签名未精确化，落入 raw 逃生舱 | 不阻塞主链路 |
-| 8 | **时间线线性化精度** | 当前为拓扑排序 + 孤立节点附加，未严格沿 then/else/thread 路径展开 | 小项，需时再精确化 |
+| G1 | **可运行导出 + 真实引擎执行** | ✅ | [`compileProject`](hcb-editor/packages/compiler/src/base/index.ts:119) 支持 `{ baseData }` → 走 [`compileWithBase`](hcb-editor/packages/compiler/src/passes/compile.ts:27)（底座库代码逐字节保留 + 新脚本追加、入口指向新脚本）；[`compileEditorState`](hcb-editor/packages/ui/src/preview/compileFromState.ts:1) 统一编排导出与预览。实测小脚本（ハル speak+dia）与新增角色脚本均 boot + tick 到 done、零 error |
+| G1a | **底座库二进制加载桥** | ✅ | Electron 主进程 [`registerBaseGameIpc`](hcb-editor/packages/apps/desktop/src/ipc.ts:24) 读本地原版 HCB（默认 auto-discovery `.reference_repo/...`，可传 `path`），preload 暴露 `window.baseGame`；渲染层 [`loadBaseBinary`](hcb-editor/packages/ui/src/preview/baseBinary.ts:1) 无桥时返回 null（浏览器退化脚本-only） |
+| G2 | **新增资源函数定义体 `emitFunctionDef`** | ✅ | [`function-gen.ts`](hcb-editor/packages/compiler/src/base/function-gen.ts:1) 克隆模板角色 SPEAK 函数体、替换名字与 styleIndex、按绝对地址重编码；[`compileProject`](hcb-editor/packages/compiler/src/base/index.ts:140) 对 `extraCharacters` 生成函数并注册地址；背景走共享加载器仅分配编号。实测新角色「小明」脚本 boot + tick 到 done |
+| G8 | **资源引用校验 + 名字选择器** | ✅ | 属性面板 speak/bsset 角色、bgset 背景改为 `<input list>` + `<datalist>`（底座角色/背景 + 工程资源合并候选，仍可自由输入）；[`PropertyPanel.tsx`](hcb-editor/packages/ui/src/components/PropertyPanel.tsx:1) 用 `availableBaseCharacters/Backgrounds` 提供候选 |
+| G10 | **资源管理器新增条目与编译联动** | ✅ | [`compileEditorState`](hcb-editor/packages/ui/src/preview/compileFromState.ts:1) 将资源表中 `speakFn/bgFn === null` 的条目作为 `extraCharacters/extraBackgrounds` 传入编译（新增角色生成函数体、新增背景分配编号） |
+
+### P1 —— 主工作流体验
+
+| # | 差距 | 状态 | 说明 |
+|---|---|---|---|
+| G3 | **背景表数据化 + 背景真实名称** | ⬜ | bgset `background` 仍为占位 `bg_<num>`；`bg_list` 真实名称与背景函数地址映射未提取 |
+| G6 | **validate 层（编译前诊断）** | ⬜ | 计划 §3.1 要求 `hcb/src/validate/`（栈平衡/分支边界/重定位完整性/label 存在性），当前无此模块；编译错误目前是运行时 `throw`，缺面向节点的友好诊断 |
+| G9 | **jump 节点** | ⬜ | 计划节点类型含 `jump`（goto label），当前 IR/UI 无 jump 节点，剧本文本 DSL 的 `jump x` 无法表达 |
+| G18 | **Electron 原生文件对话框** | ⬜ | 保存/打开工程、导出 .hcb 当前用浏览器 Blob 下载 + `input[type=file]`（文件名固定 `project.hcbproj.json`），Electron 下应走 `dialog.showSaveDialog/showOpenDialog` |
+| G11 | **真实引擎预览启用** | ✅ | 桥接层已接（RfvpProcessManager + contextBridge + RfvpClient + PreviewPanel，缺桥自动回退）；G1 完成后 tick 已通。⚠️ 额外打通了一个隐藏阻断：portable VM 原生桥对未实现演出类 syscall（TextPrint/TextClear/ColorSet/Motion* 等）已改为 no-op 兜底（[`native_bridge.rs`](hcb-editor/vendor/rfvp/crates/rfvp/src/portable/native_bridge.rs:176)），否则 tick 会以 `Unsupported` 中断线程 |
+
+### P2 —— 补全与精度
+
+| # | 差距 | 状态 | 说明 |
+|---|---|---|---|
+| G4 | **95% 剩余 5.5%** | 🟡 | 孤立算术/立即数 + bgset 精确签名（背景表数据化待补）。bgset 精确签名依赖 G3 |
+| G5 | **演出块专用模板（cgset/msgset/wait/Motion/Prim/GraphLoad）** | 🟡 | 当前部分落入 raw 逃生舱；cgset/msgset 是常见剧情块，宜升为专用模板 |
+| G12 | **预览真实表现扩展（音频/选项/CG/文本事件）** | ⬜ | FakeEngine 仅投影文本+立绘占位；rfvp-cli 不产出 `text`/`audio` 事件（PortableRuntime 只暴露 prim/thread），真实 WYSIWYG 需引擎侧补文本/音频事件捕获 |
+| G13 | **时间线线性化精度** | ⬜ | 当前为拓扑排序 + 孤立节点附加，未严格沿 then/else/thread 路径展开 |
+| G15 | **未保存脏标记（dirty indicator）** | ⬜ | UI 原则要求「未保存脏标记明确」，当前无（撤销栈之外无脏状态追踪） |
+| G17 | **预览 label 断点真实引擎 jump** | ⬜ | 协议有 `jump` op，rfvp-cli 未实现；label 断点目前只 locate 流程图 |
+| G19 | **RfvpProcessManager 健壮性** | ⬜ | 计划 §7.2 要求「崩溃自动重启 + handshake 校验 protocolVersion」，当前无（刻意跳过了 handshake） |
+| G20 | **rfvp-cli 协议补全（jump/get_g/set_g）** | ⬜ | 协议已定义但 [`main.rs`](hcb-editor/crates/rfvp-cli/src/main.rs:283) 未实现；G[] 面板调试与 label 跳转依赖 |
+| G21 | **CI（每日合成工程 IR→编译→假引擎跑通 + golden diff）** | ⬜ | 计划测试矩阵要求，当前无 CI 配置 |
+| G23 | **模板级 golden** | 🟡 | roundtrip golden 有；「instantiate(decompile(样板)) === 样板」字节级模板 golden 不完整 |
+
+### P3 —— 锦上添花 / 不阻塞
+
+| # | 差距 | 状态 | 说明 |
+|---|---|---|---|
+| G7 | **fast-check property test（hcb/core 随机指令）** | ⬜ | 计划测试矩阵要求，当前无 fast-check 依赖 |
+| G14 | **自动编译开关设置项** | ⬜ | 需求文档要求，当前 Settings 无此项 |
+| G16 | **界面语言切换 i18n** | ⬜ | 需求文档「可扩展但不优先」 |
+| G22 | **真实 Event 流录制回放回归** | ⬜ | `FakeEngine.replay` 已备，缺真实会话录制回放测试 |
+| G24 | **G[] 符号名数据化展示** | ⬜ | 预览 G[] 面板显示数字索引，无符号名 |
+
+### 依赖关系
+
+```text
+G11（真实预览） ← G1 ← G1a（底座库快照）
+G10（资源联动） ← G2（emitFunctionDef）+ G8（名字选择器）
+G17（label 跳转） ← G20（rfvp-cli jump op）
+G4（bgset 精确签名） ← G3（背景表）
+```
+
+### 建议实施顺序
+
+1. **P0 冲刺**：G1a 底座库快照 → G1 可运行导出/真实执行 → G8 名字选择器/校验 → G2 emitFunctionDef → G10 资源联动。完成后「原创剧本 → 真实预览 → 可运行导出」闭环打通。
+2. **P1**：G18 原生对话框、G6 validate、G3 背景表、G9 jump 节点。
+3. **P2/P3**：按需穿插（G13/G15/G19/G20 低成本，可随 P1 顺手做）。
 
 ---
 
@@ -129,9 +182,9 @@
   → 增量编译 ✅（地址保持式延后）
   → 95% 命中率重测（口径 A）✅ 94.49%
   → Storybook + Playwright ✅
-  → S4（rfvp-cli + Electron，解冻后）⬜（Electron 薄壳已就绪，仅欠真实引擎 rfvp-cli + contextBridge）
+  → S4（rfvp-cli + Electron）✅ 桥接 + 可运行导出 + 真实 tick（P0 全部打通）
 ```
 
 剩余非阻塞小项：演出块签名精确化、时间线线性化精度、背景真实名称（需外部资源表）。
 
-> 建议顺序内的硬骨头均已攻克（底座表数据化、raw 补丁、增量编译、95% 命中率、Storybook/Playwright）；Electron 薄壳已可打开做界面预览。剩余唯一大项是解冻后的 S4 真实引擎封装（rfvp-cli + contextBridge），其余为不阻塞主链路的收尾小项（演出块签名精确化、时间线线性化精度、背景真实名称）。
+> P0 全部落地：底座库二进制桥（G1a）→ 可运行导出/真实执行（G1）→ 名字选择器（G8）→ emitFunctionDef（G2）→ 资源联动（G10），**「原创剧本 → 真实预览 → 可运行导出」闭环已打通**（小脚本与新增角色脚本均经 rfvp-cli 实测 boot + tick 到 done、零 error）。下一步进入 P1（原生对话框、validate、背景表、jump 节点）与 P2/P3 按需穿插。
