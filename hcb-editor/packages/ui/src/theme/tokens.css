@@ -1,0 +1,114 @@
+/* FVP 剧情编辑器 —— quiet precision 主题 token
+ * 深色为默认，浅色通过 [data-theme='light'] 切换。
+ * 中性冷灰 + 单一冷色 accent；节点差异靠图标与文本层次，不靠多色。 */
+
+:root {
+  color-scheme: dark;
+
+  --bg-app: #0f1115;
+  --bg-surface: #15181d;
+  --bg-raised: #1b1f26;
+  --bg-hover: #20252d;
+  --bg-pressed: #171b21;
+
+  --border-default: #262c35;
+  --border-strong: #343b46;
+  --border-accent: #5b9cf8;
+
+  --text-primary: #e6e9ee;
+  --text-secondary: #9aa3af;
+  --text-faint: #626b78;
+  --text-on-accent: #0d1014;
+
+  --accent: #5b9cf8;
+  --accent-strong: #79b0ff;
+  --accent-muted: rgba(91, 156, 248, 0.14);
+  --accent-muted-strong: rgba(91, 156, 248, 0.24);
+
+  --danger: #d47a80;
+  --warning: #c9a05f;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow-panel: 0 4px 16px rgba(0, 0, 0, 0.32);
+
+  --font-ui: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --font-mono: 'Cascadia Code', 'JetBrains Mono', Consolas, monospace;
+}
+
+[data-theme='light'] {
+  color-scheme: light;
+
+  --bg-app: #f4f5f7;
+  --bg-surface: #ffffff;
+  --bg-raised: #ffffff;
+  --bg-hover: #eef1f5;
+  --bg-pressed: #e7ebf0;
+
+  --border-default: #e3e6eb;
+  --border-strong: #ccd2da;
+  --border-accent: #2f6fed;
+
+  --text-primary: #1b1f24;
+  --text-secondary: #59626e;
+  --text-faint: #8a929d;
+  --text-on-accent: #ffffff;
+
+  --accent: #2f6fed;
+  --accent-strong: #2058c9;
+  --accent-muted: rgba(47, 111, 237, 0.1);
+  --accent-muted-strong: rgba(47, 111, 237, 0.18);
+
+  --danger: #c3484f;
+  --warning: #a97b2f;
+
+  --shadow-card: 0 1px 2px rgba(17, 24, 39, 0.06);
+  --shadow-panel: 0 4px 16px rgba(17, 24, 39, 0.1);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* 克制滚动条：只在需要时出现，弱对比 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border: 3px solid transparent;
+  border-radius: 6px;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-faint);
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}

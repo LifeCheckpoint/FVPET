@@ -1,0 +1,21 @@
+{
+  "name": "@hcb-editor/rfvp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "rfvp-cli subprocess protocol + FakeEngine (adapter layer)",
+  "exports": {
+    ".": "./src/index.ts",
+    "./protocol": "./src/protocol.ts",
+    "./fake-engine": "./src/fake-engine.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "lint": "eslint src",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  }
+}

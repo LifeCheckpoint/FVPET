@@ -1,0 +1,16 @@
+{
+  "header": {
+    "schemaVersion": 1,
+    "engine": "fvp",
+    "game": "sakura",
+    "nls": "sjis"
+  },
+  "nodes": [
+    { "kind": "label", "name": "start" },
+    { "kind": "dia", "text": "こんにちは、世界。" },
+    { "kind": "dia", "text": "これは合成フィクスチャです。" },
+    { "kind": "branch", "cond": { "op": "global_eq", "global": 103, "value": 1 }, "then": "start", "else": "end" },
+    { "kind": "label", "name": "end" },
+    { "kind": "dia", "text": "おわり。" }
+  ]
+}

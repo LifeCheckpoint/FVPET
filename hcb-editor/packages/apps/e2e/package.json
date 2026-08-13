@@ -1,0 +1,16 @@
+{
+  "name": "@hcb-editor/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "端到端测试（Playwright，驱动 ui 演示壳，假引擎兜底）",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "lint": "eslint src",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0"
+  }
+}

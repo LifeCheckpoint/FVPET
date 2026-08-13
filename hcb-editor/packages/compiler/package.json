@@ -1,0 +1,21 @@
+{
+  "name": "@hcb-editor/compiler",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "IR -> HCB compiler (domain layer)",
+  "exports": {
+    ".": "./src/index.ts",
+    "./passes": "./src/passes/index.ts",
+    "./templates": "./src/templates/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "lint": "eslint src",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@hcb-editor/hcb": "workspace:*"
+  }
+}

@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.turbo/
+coverage/
+storybook-static/
+playwright-report/
+test-results/
+crates/rfvp-cli/target/
+*.log
+.DS_Store

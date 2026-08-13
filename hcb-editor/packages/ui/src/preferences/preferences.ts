@@ -1,0 +1,51 @@
+/**
+ * 编辑器偏好：主题 / 默认 NLS / 预览比例 / 自动编译。
+ * 持久化到 localStorage（键名 hcb-editor:preferences）。
+ */
+
+export type ThemePreference = 'dark' | 'light';
+export type NlsPreference = 'sjis' | 'gbk' | 'utf8';
+export type PreviewRatio = '4:3' | '16:9';
+
+export interface Preferences {
+  readonly theme: ThemePreference;
+  readonly defaultNls: NlsPreference;
+  readonly previewRatio: PreviewRatio;
+  readonly autoCompile: boolean;
+}
+
+export const DEFAULT_PREFERENCES: Preferences = {
+  theme: 'dark',
+  defaultNls: 'sjis',
+  previewRatio: '4:3',
+  autoCompile: false,
+};
+
+const STORAGE_KEY = 'hcb-editor:preferences';
+
+export function loadPreferences(): Preferences {
+  if (typeof localStorage === 'undefined') {
+    return DEFAULT_PREFERENCES;
+  }
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      return DEFAULT_PREFERENCES;
+    }
+    const parsed = JSON.parse(raw) as Partial<Preferences>;
+    return { ...DEFAULT_PREFERENCES, ...parsed };
+  } catch {
+    return DEFAULT_PREFERENCES;
+  }
+}
+
+export function savePreferences(prefs: Preferences): void {
+  if (typeof localStorage === 'undefined') {
+    return;
+  }
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
+  } catch {
+    // 存储不可用时静默降级。
+  }
+}

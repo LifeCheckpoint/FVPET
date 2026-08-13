@@ -1,0 +1,42 @@
+/**
+ * 资源表模型：角色 / 背景 / 音频三张可编辑表。
+ * - 角色、背景携带「底座游戏函数地址」字段；新增资源时地址为 null，
+ *   由编译器 emitFunctionDef 在编译期自动分配。
+ * - 音频仅数据（syscall 编号直传，无函数生成）。
+ */
+
+export interface CharacterResource {
+  readonly id: string;
+  readonly name: string;
+  readonly alias?: string;
+  /** 底座游戏已有 SPEAK 函数地址；新增资源为 null（编译期自动分配）。 */
+  readonly speakFn: number | null;
+  readonly pose: number;
+  readonly costume: number;
+  readonly face: number;
+}
+
+export interface BackgroundResource {
+  readonly id: string;
+  readonly name: string;
+  readonly variant: number;
+  /** 底座游戏背景函数地址；新增资源为 null。 */
+  readonly bgFn: number | null;
+}
+
+export interface AudioResource {
+  readonly id: string;
+  readonly type: 'bgm' | 'voice' | 'se';
+  readonly number: number;
+  readonly label: string;
+}
+
+export interface ProjectResources {
+  readonly characters: readonly CharacterResource[];
+  readonly backgrounds: readonly BackgroundResource[];
+  readonly audios: readonly AudioResource[];
+}
+
+export function emptyResources(): ProjectResources {
+  return { characters: [], backgrounds: [], audios: [] };
+}

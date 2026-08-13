@@ -1,0 +1,23 @@
+{
+  "name": "@hcb-editor/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "hcb-editor headless CLI (decompile / roundtrip / compile)",
+  "bin": {
+    "hcb-editor": "./src/main.ts"
+  },
+  "scripts": {
+    "test": "vitest run --passWithNoTests",
+    "lint": "eslint src",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "cli": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@hcb-editor/compiler": "workspace:*",
+    "@hcb-editor/hcb": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.1"
+  }
+}

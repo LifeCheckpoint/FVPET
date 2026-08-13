@@ -1,0 +1,19 @@
+{
+  "name": "@hcb-editor/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Electron 薄壳：加载 ui 演示壳做初步界面了解（真实引擎 S4 解冻后接入）",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "concurrently -k \"pnpm --dir ../../ui run dev:test\" \"pnpm build && node scripts/launch.cjs\"",
+    "start": "pnpm build && node scripts/launch.cjs",
+    "test": "vitest run --passWithNoTests",
+    "lint": "eslint src",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "electron": "^33.2.0"
+  }
+}
