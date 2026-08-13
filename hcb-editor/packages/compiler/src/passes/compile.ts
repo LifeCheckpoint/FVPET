@@ -23,8 +23,17 @@ export function compile(ir: IrScript, ctx: CompileCtx): Uint8Array {
   return encodeFlatItems(items, ctx.sysdesc, ctx.nls);
 }
 
-/** patchBase 拼接：底座库代码原样保留 + 新脚本代码追加，库函数地址不变，入口指向新脚本。 */
-export function compileWithBase(ir: IrScript, ctx: CompileCtx, baseData: Uint8Array): Uint8Array {
+/**
+ * patchBase 拼接：底座库代码原样保留 + 新脚本代码追加，库函数地址不变，入口指向新脚本。
+ * `extraFuncBytes`（新增角色生成的函数定义体）插入在底座库代码区与新脚本之间，
+ * 其地址从 baseCodeEnd 起顺延，入口随之顺移。
+ */
+export function compileWithBase(
+  ir: IrScript,
+  ctx: CompileCtx,
+  baseData: Uint8Array,
+  extraFuncBytes: Uint8Array = new Uint8Array(0),
+): Uint8Array {
   const base = decodeHcb(baseData, ctx.nls);
   const baseCodeEnd = base.sysdesc.sysDescOffset;
   const baseCode = baseData.subarray(4, baseCodeEnd);
@@ -32,13 +41,14 @@ export function compileWithBase(ir: IrScript, ctx: CompileCtx, baseData: Uint8Ar
   const templateCtx: TemplateCtx = { nls: ctx.nls, tables: ctx.tables };
   const blocks = lower(ir, templateCtx);
   const items = assembleFlat(blocks, base.sysdesc, ctx.nls);
-  const scriptCode = encodeFlatItemsCode(items, baseCodeEnd, ctx.nls);
+  const scriptStart = baseCodeEnd + extraFuncBytes.length;
+  const scriptCode = encodeFlatItemsCode(items, scriptStart, ctx.nls);
 
   const code = new ByteWriter();
-  code.bytes(baseCode).bytes(scriptCode);
+  code.bytes(baseCode).bytes(extraFuncBytes).bytes(scriptCode);
 
   const sysDescOffset = 4 + code.length;
-  const relocatedSysdesc: HcbSysdesc = { ...base.sysdesc, entryPoint: baseCodeEnd };
+  const relocatedSysdesc: HcbSysdesc = { ...base.sysdesc, entryPoint: scriptStart };
   const sysdescBytes = serializeSysdesc(relocatedSysdesc, ctx.nls);
 
   const out = new ByteWriter();
