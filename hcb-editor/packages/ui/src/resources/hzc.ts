@@ -85,3 +85,48 @@ export async function decodeHzc1(bytes: Uint8Array): Promise<HzcImage> {
 
   return { width, height, rgba };
 }
+
+/**
+ * RGBA 像素 → PNG data URL（浏览器 Canvas）。
+ * 当 maxDimension 给定时，等比缩放到最长边不超过该值（控制内存占用与导出体积）。
+ */
+export function rgbaToPngDataUrl(
+  width: number,
+  height: number,
+  rgba: Uint8Array,
+  maxDimension?: number,
+): string {
+  const canvas = document.createElement('canvas');
+  let targetW = width;
+  let targetH = height;
+  if (maxDimension && Math.max(width, height) > maxDimension) {
+    const scale = maxDimension / Math.max(width, height);
+    targetW = Math.max(1, Math.round(width * scale));
+    targetH = Math.max(1, Math.round(height * scale));
+  }
+  canvas.width = targetW;
+  canvas.height = targetH;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('无法创建 Canvas 2D 上下文');
+  }
+  const imageData = ctx.createImageData(width, height);
+  imageData.data.set(rgba);
+  if (targetW !== width || targetH !== height) {
+    // 先铺到离屏整幅画布，再缩绘到目标画布，避免创建多余中间对象。
+    const full = document.createElement('canvas');
+    full.width = width;
+    full.height = height;
+    const fullCtx = full.getContext('2d');
+    if (!fullCtx) {
+      throw new Error('无法创建 Canvas 2D 上下文');
+    }
+    fullCtx.putImageData(imageData, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(full, 0, 0, targetW, targetH);
+  } else {
+    ctx.putImageData(imageData, 0, 0);
+  }
+  return canvas.toDataURL('image/png');
+}

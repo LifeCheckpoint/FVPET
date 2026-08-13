@@ -16,6 +16,7 @@ import {
   editAudio,
   editBackground,
   editCharacter,
+  editCharacters,
   removeAudio,
   removeBackground,
   removeCharacter,
@@ -26,8 +27,9 @@ import {
   type EditorState,
   type EditorStore,
 } from '@hcb-editor/editor';
-import { decodeHzc1 } from '../resources/hzc.js';
+import { decodeHzc1, rgbaToPngDataUrl } from '../resources/hzc.js';
 import { parseBinArchive } from '../resources/bin.js';
+import { importGraphBsFile } from '../resources/graph-bs.js';
 
 type Tab = 'characters' | 'backgrounds' | 'audios';
 
@@ -68,21 +70,6 @@ function readFileAsDataUrl(file: File): Promise<string> {
     reader.onerror = () => reject(reader.error ?? new Error('读取文件失败'));
     reader.readAsDataURL(file);
   });
-}
-
-/** RGBA 像素 → PNG data URL（浏览器 Canvas）。 */
-function rgbaToPngDataUrl(width: number, height: number, rgba: Uint8Array): string {
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) {
-    throw new Error('无法创建 Canvas 2D 上下文');
-  }
-  const imageData = ctx.createImageData(width, height);
-  imageData.data.set(rgba);
-  ctx.putImageData(imageData, 0, 0);
-  return canvas.toDataURL('image/png');
 }
 
 function updateCharacter(r: CharacterResource, patch: {
@@ -152,6 +139,214 @@ function updateAudio(r: AudioResource, patch: {
   return next;
 }
 
+/** 角色统计卡片（列表视图）：缩略图 + 名称 + 统计数字，点击进入详情。 */
+function CharacterStatCard({ r, onOpen }: { readonly r: CharacterResource; readonly onOpen: () => void }) {
+  const poseCount = (r.poses ?? []).length;
+  const stats: string[] = [`表情集 ${poseCount}`];
+  if (r.image) {
+    stats.push('立绘 ✓');
+  }
+  if (r.chaNum !== undefined) {
+    stats.push(`编号 ${r.chaNum}`);
+  }
+  return (
+    <button type="button" className="character-stat" onClick={onOpen}>
+      <span className="character-stat__thumb">
+        {r.image ? (
+          <img src={r.image} alt={r.name} />
+        ) : (
+          <span className="resource-card__avatar" style={avatarStyle(r.name)}>
+            {r.name.trim().slice(0, 1) || '?'}
+          </span>
+        )}
+      </span>
+      <span className="character-stat__body">
+        <span className="character-stat__name">
+          {r.builtin && <span className="resource-card__badge">内置</span>}
+          {r.name}
+        </span>
+        <span className="character-stat__stats">{stats.join(' · ')}</span>
+      </span>
+      <span className="character-stat__arrow">›</span>
+    </button>
+  );
+}
+
+/** 角色详情（二级菜单）：分区展示 + 全部编辑项 + 返回列表。 */
+function CharacterDetail({ r, store, onBack }: {
+  readonly r: CharacterResource;
+  readonly store: EditorStore;
+  readonly onBack: () => void;
+}) {
+  const poses = r.poses ?? [];
+  const setPose = (i: number, patch: Partial<CharacterPose>): void => {
+    const next = poses.map((q, j) => (j === i ? { ...q, ...patch } : q));
+    store.dispatch(editCharacter(r.id, updateCharacter(r, { poses: next })));
+  };
+  const setChaNum = (value: string): void => {
+    const n = intOrNull(value);
+    const next = { ...r };
+    if (n === null) {
+      delete next.chaNum;
+    } else {
+      next.chaNum = n;
+    }
+    store.dispatch(editCharacter(r.id, next));
+  };
+
+  return (
+    <div className="character-detail">
+      <header className="character-detail__bar">
+        <button type="button" className="btn btn--secondary" onClick={onBack}>← 返回</button>
+        <div className="character-detail__identity">
+          <h2 className="character-detail__title">{r.name}</h2>
+          {r.builtin && <span className="resource-card__badge">内置</span>}
+        </div>
+        {!r.builtin && (
+          <button type="button" className="character-detail__delete" onClick={() => store.dispatch(removeCharacter(r.id))}>
+            删除角色
+          </button>
+        )}
+      </header>
+
+      <div className="character-detail__grid">
+        <section className="detail-section detail-section--preview">
+          <div className="character-detail__stage">
+            {r.image ? (
+              <img className="character-detail__img" src={r.image} alt={r.name} />
+            ) : (
+              <span className="character-detail__stage-empty">暂无立绘</span>
+            )}
+          </div>
+          <label className="btn btn--secondary btn--block">
+            {r.image ? '更换立绘' : '导入立绘'}
+            <input
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  void readFileAsDataUrl(file).then((url) => store.dispatch(editCharacter(r.id, updateCharacter(r, { image: url }))));
+                }
+                e.target.value = '';
+              }}
+            />
+          </label>
+        </section>
+
+        <section className="detail-section">
+          <h3 className="detail-section__title">基础信息</h3>
+          <div className="form-grid">
+            <label className="form-field">
+              <span className="form-field__label">名称</span>
+              <input className="form-field__input" value={r.name} onChange={(e) => store.dispatch(editCharacter(r.id, updateCharacter(r, { name: e.target.value })))} />
+            </label>
+            <label className="form-field">
+              <span className="form-field__label">别名</span>
+              <input className="form-field__input" value={r.alias ?? ''} placeholder="可选" onChange={(e) => store.dispatch(editCharacter(r.id, updateCharacter(r, { alias: e.target.value })))} />
+            </label>
+          </div>
+        </section>
+
+        <section className="detail-section">
+          <h3 className="detail-section__title">技术参数</h3>
+          <div className="form-grid form-grid--3">
+            <label className="form-field">
+              <span className="form-field__label">姿势</span>
+              <input className="form-field__input" type="number" value={r.pose} onChange={(e) => store.dispatch(editCharacter(r.id, updateCharacter(r, { pose: Number(e.target.value) })))} />
+            </label>
+            <label className="form-field">
+              <span className="form-field__label">服装</span>
+              <input className="form-field__input" type="number" value={r.costume} onChange={(e) => store.dispatch(editCharacter(r.id, updateCharacter(r, { costume: Number(e.target.value) })))} />
+            </label>
+            <label className="form-field">
+              <span className="form-field__label">表情</span>
+              <input className="form-field__input" type="number" value={r.face} onChange={(e) => store.dispatch(editCharacter(r.id, updateCharacter(r, { face: Number(e.target.value) })))} />
+            </label>
+          </div>
+          <div className="form-grid">
+            <label className="form-field">
+              <span className="form-field__label">立绘编号</span>
+              <input className="form-field__input" type="number" value={r.chaNum ?? ''} placeholder="自动" onChange={(e) => setChaNum(e.target.value)} />
+            </label>
+            <label className="form-field">
+              <span className="form-field__label">SPEAK 函数</span>
+              <input className="form-field__input form-field__input--mono" value={r.speakFn ?? ''} placeholder="自动分配" onChange={(e) => store.dispatch(editCharacter(r.id, updateCharacter(r, { speakFn: intOrNull(e.target.value) })))} />
+            </label>
+          </div>
+        </section>
+      </div>
+
+      <section className="detail-section">
+        <div className="detail-section__head">
+          <h3 className="detail-section__title">
+            表情集 <span className="detail-section__count">{poses.length}</span>
+          </h3>
+          <button
+            type="button"
+            className="btn btn--secondary"
+            onClick={() => store.dispatch(editCharacter(r.id, updateCharacter(r, { poses: [...poses, { pose: r.pose, costume: r.costume, face: r.face, image: r.image ?? '' }] })))}
+          >
+            + 添加表情
+          </button>
+        </div>
+        {poses.length === 0 ? (
+          <p className="detail-section__empty">尚未配置表情集，点击「添加表情」开始。</p>
+        ) : (
+          <div className="pose-grid">
+            {poses.map((p, i) => (
+              <div className="pose-tile" key={i}>
+                {p.image ? (
+                  <img className="pose-tile__img" src={p.image} alt={`${r.name} ${p.pose}/${p.costume}/${p.face}`} />
+                ) : (
+                  <span className="pose-tile__empty">无图</span>
+                )}
+                <div className="pose-tile__body">
+                  <div className="pose-tile__fields">
+                    <label className="pose-tile__field">
+                      <span>姿势</span>
+                      <input type="number" value={p.pose} onChange={(e) => setPose(i, { pose: Number(e.target.value) })} />
+                    </label>
+                    <label className="pose-tile__field">
+                      <span>服装</span>
+                      <input type="number" value={p.costume} onChange={(e) => setPose(i, { costume: Number(e.target.value) })} />
+                    </label>
+                    <label className="pose-tile__field">
+                      <span>表情</span>
+                      <input type="number" value={p.face} onChange={(e) => setPose(i, { face: Number(e.target.value) })} />
+                    </label>
+                  </div>
+                  <div className="pose-tile__actions">
+                    <label className="pose-tile__action">
+                      换图
+                      <input
+                        type="file"
+                        accept="image/*"
+                        hidden
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            void readFileAsDataUrl(file).then((url) => setPose(i, { image: url }));
+                          }
+                          e.target.value = '';
+                        }}
+                      />
+                    </label>
+                    <button type="button" className="pose-tile__action pose-tile__action--danger" onClick={() => store.dispatch(editCharacter(r.id, updateCharacter(r, { poses: poses.filter((_, j) => j !== i) })))}>
+                      移除
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
 export interface ResourceManagerProps {
   readonly state: EditorState;
   readonly store: EditorStore;
@@ -162,6 +357,8 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
   const [tab, setTab] = useState<Tab>('characters');
   const [queue, setQueue] = useState<PendingResource[]>([]);
   const [importingCount, setImportingCount] = useState(0);
+  const [openCharId, setOpenCharId] = useState<string | null>(null);
+  const [importProgress, setImportProgress] = useState<{ readonly done: number; readonly total: number } | null>(null);
   const queueSeq = useRef(0);
   const importing = importingCount > 0;
 
@@ -272,6 +469,50 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
     void importAudios(audios);
   };
 
+  /** 导入内置立绘文件（graph_bs.bin）：解码 → 按角色归类 → 批量填充内置角色立绘（一次 undo）。 */
+  const importBuiltinSprites = async (file: File): Promise<void> => {
+    setImportingCount((c) => c + 1);
+    setImportProgress(null);
+    try {
+      const result = await importGraphBsFile(file, {
+        maxDimension: 1024,
+        onProgress: (done, total) => setImportProgress({ done, total }),
+      });
+      const edits: { readonly id: string; readonly character: CharacterResource }[] = [];
+      const unmatched: string[] = [];
+      for (const set of result.characters) {
+        const target = state.resources.characters.find((c) => c.builtin && c.name === set.name);
+        if (!target) {
+          unmatched.push(set.name);
+          continue;
+        }
+        edits.push({
+          id: target.id,
+          character: {
+            ...target,
+            ...(set.image !== undefined ? { image: set.image } : {}),
+            poses: set.poses,
+            pose: set.defaultPose,
+            costume: set.defaultCostume,
+            face: 0,
+          },
+        });
+      }
+      if (edits.length > 0) {
+        store.dispatch(editCharacters(edits));
+      }
+      const note = unmatched.length > 0 ? `；未匹配内置角色：${unmatched.join('、')}` : '';
+      window.alert(`内置立绘导入完成：${edits.length} 个角色，共 ${result.decoded} 张立绘${note}`);
+    } catch (err) {
+      window.alert(`内置立绘导入失败：${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setImportingCount((c) => c - 1);
+      setImportProgress(null);
+    }
+  };
+
+  const openChar = openCharId !== null ? (state.resources.characters.find((c) => c.id === openCharId) ?? null) : null;
+
   return (
     <div className="workspace">
       <header className="workspace__header">
@@ -307,7 +548,9 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
           {importing && (
             <div className="import-progress" role="status" aria-label="正在导入">
               <div className="import-progress__bar" />
-              <span className="import-progress__text">正在导入…</span>
+              <span className="import-progress__text">
+                {importProgress ? `正在导入… ${importProgress.done}/${importProgress.total}` : '正在导入…'}
+              </span>
             </div>
           )}
           {queue.length > 0 && (
@@ -341,137 +584,18 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
             </div>
           )}
           {tab === 'characters' && (
-            <div className="resource-grid">
-              {state.resources.characters.length === 0 && (
-                <div className="resource-empty">还没有角色，点击下方「添加角色」。</div>
-              )}
-              {state.resources.characters.map((r) => (
-                <article className="resource-card" key={r.id}>
-                  <header className="resource-card__head">
-                    {r.image ? (
-                      <img className="resource-card__avatar-img" src={r.image} alt={r.name} />
-                    ) : (
-                      <span className="resource-card__avatar" style={avatarStyle(r.name)}>
-                        {r.name.trim().slice(0, 1) || '?'}
-                      </span>
-                    )}
-                    {r.builtin && <span className="resource-card__badge">内置</span>}
-                    <input className="resource-card__name" value={r.name} onChange={(e) => store.dispatch(editCharacter(r.id, updateCharacter(r, { name: e.target.value })))} />
-                    {!r.builtin && (
-                      <button type="button" className="resource-card__remove" aria-label="删除角色" onClick={() => store.dispatch(removeCharacter(r.id))}>×</button>
-                    )}
-                  </header>
-                  <label className="resource-card__import">
-                    {r.image ? '更换立绘' : '导入立绘'}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      hidden
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          void readFileAsDataUrl(file).then((url) => store.dispatch(editCharacter(r.id, updateCharacter(r, { image: url }))));
-                        }
-                        e.target.value = '';
-                      }}
-                    />
-                  </label>
-                  <input className="resource-card__sub" value={r.alias ?? ''} placeholder="别名（可选）" onChange={(e) => store.dispatch(editCharacter(r.id, updateCharacter(r, { alias: e.target.value })))} />
-                  <div className="resource-card__poses">
-                    <div className="resource-card__poses-title">表情集（姿势 / 服装 / 表情 → 图）</div>
-                    {(r.poses ?? []).map((p, i) => (
-                      <div className="resource-card__pose" key={i}>
-                        {p.image ? (
-                          <img className="resource-card__pose-img" src={p.image} alt={`${r.name} ${p.pose}/${p.costume}/${p.face}`} />
-                        ) : (
-                          <span className="resource-card__pose-empty">无图</span>
-                        )}
-                        <div className="resource-card__pose-fields">
-                          <input
-                            type="number"
-                            value={p.pose}
-                            title="姿势 pose"
-                            onChange={(e) => {
-                              const poses = (r.poses ?? []).map((q, j) => (j === i ? { ...q, pose: Number(e.target.value) } : q));
-                              store.dispatch(editCharacter(r.id, updateCharacter(r, { poses })));
-                            }}
-                          />
-                          <input
-                            type="number"
-                            value={p.costume}
-                            title="服装 costume"
-                            onChange={(e) => {
-                              const poses = (r.poses ?? []).map((q, j) => (j === i ? { ...q, costume: Number(e.target.value) } : q));
-                              store.dispatch(editCharacter(r.id, updateCharacter(r, { poses })));
-                            }}
-                          />
-                          <input
-                            type="number"
-                            value={p.face}
-                            title="表情 face"
-                            onChange={(e) => {
-                              const poses = (r.poses ?? []).map((q, j) => (j === i ? { ...q, face: Number(e.target.value) } : q));
-                              store.dispatch(editCharacter(r.id, updateCharacter(r, { poses })));
-                            }}
-                          />
-                        </div>
-                        <label className="resource-card__import resource-card__import--sm">
-                          图
-                          <input
-                            type="file"
-                            accept="image/*"
-                            hidden
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              if (file) {
-                                void readFileAsDataUrl(file).then((url) => {
-                                  const poses = (r.poses ?? []).map((q, j) => (j === i ? { ...q, image: url } : q));
-                                  store.dispatch(editCharacter(r.id, updateCharacter(r, { poses })));
-                                });
-                              }
-                              e.target.value = '';
-                            }}
-                          />
-                        </label>
-                        <button
-                          type="button"
-                          className="resource-card__remove"
-                          aria-label="删除表情"
-                          onClick={() => store.dispatch(editCharacter(r.id, updateCharacter(r, { poses: (r.poses ?? []).filter((_, j) => j !== i) })))}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                    <button
-                      type="button"
-                      className="resource-card__pose-add"
-                      onClick={() => store.dispatch(editCharacter(r.id, updateCharacter(r, { poses: [...(r.poses ?? []), { pose: r.pose, costume: r.costume, face: r.face, image: r.image ?? '' }] })))}
-                    >
-                      + 添加表情
-                    </button>
-                  </div>
-                  <div className="resource-card__meta">
-                    <label className="resource-card__field">
-                      <span>姿势</span>
-                      <input type="number" value={r.pose} onChange={(e) => store.dispatch(editCharacter(r.id, updateCharacter(r, { pose: Number(e.target.value) })))} />
-                    </label>
-                    <label className="resource-card__field">
-                      <span>服装</span>
-                      <input type="number" value={r.costume} onChange={(e) => store.dispatch(editCharacter(r.id, updateCharacter(r, { costume: Number(e.target.value) })))} />
-                    </label>
-                    <label className="resource-card__field">
-                      <span>表情</span>
-                      <input type="number" value={r.face} onChange={(e) => store.dispatch(editCharacter(r.id, updateCharacter(r, { face: Number(e.target.value) })))} />
-                    </label>
-                  </div>
-                  <label className="resource-card__adv">
-                    <span>SPEAK 函数</span>
-                    <input className="resource-card__adv-input" value={r.speakFn ?? ''} placeholder="自动分配" onChange={(e) => store.dispatch(editCharacter(r.id, updateCharacter(r, { speakFn: intOrNull(e.target.value) })))} />
-                  </label>
-                </article>
-              ))}
-            </div>
+            openChar ? (
+              <CharacterDetail key={openChar.id} r={openChar} store={store} onBack={() => setOpenCharId(null)} />
+            ) : (
+              <div className="resource-grid resource-grid--cards">
+                {state.resources.characters.length === 0 && (
+                  <div className="resource-empty">还没有角色，点击下方「添加角色」。</div>
+                )}
+                {state.resources.characters.map((r) => (
+                  <CharacterStatCard key={r.id} r={r} onOpen={() => setOpenCharId(r.id)} />
+                ))}
+              </div>
+            )
           )}
 
           {tab === 'backgrounds' && (
@@ -584,6 +708,21 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
                     const hzc = files.filter((f) => /\.(hzc1|bin)$/i.test(f.name));
                     const images = files.filter((f) => !/\.(hzc1|bin)$/i.test(f.name));
                     void importHzc(hzc).then(() => importImages(images));
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+              <label className="btn btn--secondary">
+                导入内置立绘文件
+                <input
+                  type="file"
+                  accept=".bin"
+                  hidden
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      void importBuiltinSprites(file);
+                    }
                     e.target.value = '';
                   }}
                 />

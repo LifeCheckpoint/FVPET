@@ -6,6 +6,7 @@ import {
   applyCommand,
   createProject,
   editCharacter,
+  editCharacters,
   emptyState,
   removeCharacter,
 } from '@hcb-editor/editor';
@@ -56,5 +57,22 @@ describe('resource commands', () => {
     const id = state.resources.characters[0]!.id;
     state = applyCommand(state, removeCharacter(id)).next;
     expect(state.resources.characters).toHaveLength(0);
+  });
+
+  it('bulk edits characters in a single command (one undo step)', () => {
+    let state = emptyState();
+    state = applyCommand(state, addCharacter({ name: 'クロ', speakFn: null, pose: 0, costume: 0, face: 0 })).next;
+    state = applyCommand(state, addCharacter({ name: 'ハル', speakFn: null, pose: 0, costume: 0, face: 0 })).next;
+    const [a, b] = state.resources.characters;
+
+    const next = applyCommand(state, editCharacters([
+      { id: a!.id, character: { ...a!, name: 'クロ改', image: 'data:image/png;base64,x' } },
+      { id: b!.id, character: { ...b!, name: 'ハル改', pose: 2 } },
+    ])).next;
+
+    expect(next.resources.characters[0]!.name).toBe('クロ改');
+    expect(next.resources.characters[0]!.image).toBe('data:image/png;base64,x');
+    expect(next.resources.characters[1]!.name).toBe('ハル改');
+    expect(next.resources.characters[1]!.pose).toBe(2);
   });
 });
