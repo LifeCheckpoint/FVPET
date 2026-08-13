@@ -5,7 +5,7 @@
  */
 
 import type { IrNode } from '@hcb-editor/hcb/ir';
-import type { AsmBlock, AsmInstruction, AsmPattern, Template } from './types.js';
+import type { AsmBlock, AsmPattern, Template } from './types.js';
 
 type SelsetNode = Extract<IrNode, { kind: 'selset' }>;
 
@@ -28,37 +28,48 @@ export const selsetTemplate: Template<SelsetNode> = {
     choices: { kind: 'label', doc: '选项文本 + 目标 label' },
   },
   instantiate(node, _ctx): AsmBlock[] {
-    const ins: AsmInstruction[] = [];
+    const blocks: AsmBlock[] = [];
     // start（基底文字，IR 未建模，空串）
-    ins.push(
-      { op: 'push_string', text: '' },
-      { op: 'push_nil' },
-      { op: 'push_nil' },
-      { op: 'push_nil' },
-      { op: 'call', target: `f_${SEL_START_FN.toString(16).padStart(8, '0')}` },
-    );
+    blocks.push({
+      instructions: [
+        { op: 'push_string', text: '' },
+        { op: 'push_nil' },
+        { op: 'push_nil' },
+        { op: 'push_nil' },
+        { op: 'call', target: `f_${SEL_START_FN.toString(16).padStart(8, '0')}` },
+      ],
+    });
     // options
     for (const choice of node.choices) {
-      ins.push(
-        { op: 'push_string', text: choice.text },
-        { op: 'push_nil' },
-        { op: 'push_nil' },
-        { op: 'call', target: `f_${SEL_OPTION_FN.toString(16).padStart(8, '0')}` },
-      );
+      blocks.push({
+        instructions: [
+          { op: 'push_string', text: choice.text },
+          { op: 'push_nil' },
+          { op: 'push_nil' },
+          { op: 'call', target: `f_${SEL_OPTION_FN.toString(16).padStart(8, '0')}` },
+        ],
+      });
     }
     // end
-    ins.push({ op: 'call', target: `f_${SEL_END_FN.toString(16).padStart(8, '0')}` });
-    // dispatch：G[resultGlobal] == i → jump choice.label（jz 目标由 layout 阶段分配 label）
+    blocks.push({
+      instructions: [{ op: 'call', target: `f_${SEL_END_FN.toString(16).padStart(8, '0')}` }],
+    });
+    // dispatch：G[resultGlobal] == i → jump choice.label；内部检查标签作为 block label 落位。
     for (let i = 0; i < node.choices.length; i += 1) {
       const choice = node.choices[i]!;
-      ins.push(
-        { op: 'push_global', index: node.resultGlobal },
-        { op: 'push_i8', value: i + 1 },
-        { op: 'set_e' },
-        { op: 'jz', target: `@sel_check_${i + 1}` },
-        { op: 'jmp', target: choice.label },
-      );
+      blocks.push({
+        label: `@sel_check_${i}`,
+        instructions: [
+          { op: 'push_global', index: node.resultGlobal },
+          { op: 'push_i8', value: i + 1 },
+          { op: 'set_e' },
+          { op: 'jz', target: `@sel_check_${i + 1}` },
+          { op: 'jmp', target: choice.label },
+        ],
+      });
     }
-    return [{ instructions: ins }];
+    // 无匹配时的兜底落点（空块，仅提供 label）。
+    blocks.push({ label: `@sel_check_${node.choices.length}`, instructions: [] });
+    return blocks;
   },
 };

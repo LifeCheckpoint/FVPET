@@ -117,7 +117,7 @@ export const threadTemplate: Template<ThreadNode> = {
       {
         instructions: [
           { op: 'push_i8', value: node.slot },
-          { op: 'push_i32', value: 0 }, // entry 地址由 assemble 解析 label 后回填
+          { op: 'push_thread_entry', target: node.entry },
           { op: 'syscall', name: 'ThreadStart' },
         ],
       },

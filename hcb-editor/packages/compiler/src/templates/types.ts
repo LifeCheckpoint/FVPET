@@ -45,7 +45,8 @@ export type AsmInstruction =
   | { op: 'set_g' }
   | { op: 'set_ge' }
   | { op: 'set_l' }
-  | { op: 'set_le' };
+  | { op: 'set_le' }
+  | { op: 'push_thread_entry'; target: string };
 
 export interface AsmBlock {
   readonly label?: string;

@@ -40,6 +40,7 @@ function asmSize(ins: AsmInstruction, nls: Nls): number {
     case 'jz':
     case 'push_i32':
     case 'push_f32':
+    case 'push_thread_entry':
       return 5;
     case 'push_i8':
     case 'push_stack':
@@ -163,6 +164,21 @@ function expandInstruction(
     case 'push_i32':
       w.u8(opcodeOfMnemonic('push_i32')).i32(ins.value);
       break;
+    case 'push_thread_entry': {
+      // ThreadStart 前的函数指针：解析 label 地址并标记，encode 阶段按旧地址重映射。
+      const addr = resolveTarget(ins.target, labelAddr);
+      w.u8(opcodeOfMnemonic('push_i32')).u32(addr);
+      const bytes = w.toBytes();
+      return {
+        addr: 0,
+        opcode: bytes[0] ?? 0,
+        mnemonic: 'push_i32',
+        args: { kind: 'i32', value: addr },
+        size: bytes.length,
+        rawBytes: bytes,
+        addressRole: 'thread_start_function_pointer',
+      };
+    }
     case 'push_i16':
       w.u8(opcodeOfMnemonic('push_i16')).i16(ins.value);
       break;
