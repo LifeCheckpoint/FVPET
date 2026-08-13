@@ -10,6 +10,13 @@ import type { EditorState } from './state.js';
 
 export const PROJECT_FILE_SCHEMA_VERSION = 1 as const;
 
+const CharacterPoseSchema = z.object({
+  pose: z.number(),
+  costume: z.number(),
+  face: z.number(),
+  image: z.string(),
+});
+
 const CharacterResourceSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -19,6 +26,7 @@ const CharacterResourceSchema = z.object({
   costume: z.number(),
   face: z.number(),
   image: z.string().optional(),
+  poses: z.array(CharacterPoseSchema).optional(),
 });
 
 const BackgroundResourceSchema = z.object({
@@ -114,6 +122,7 @@ export function deserializeProject(text: string): EditorState {
       face: number;
       alias?: string;
       image?: string;
+      poses?: { pose: number; costume: number; face: number; image: string }[];
     } = {
       id: c.id,
       name: c.name,
@@ -127,6 +136,9 @@ export function deserializeProject(text: string): EditorState {
     }
     if (c.image !== undefined) {
       r.image = c.image;
+    }
+    if (c.poses !== undefined) {
+      r.poses = c.poses;
     }
     return r;
   });

@@ -5,6 +5,14 @@
  * - 音频仅数据（syscall 编号直传，无函数生成）。
  */
 
+/** 立绘表情/姿势组合：同一角色可按 pose/costume/face 绑定不同图片。 */
+export interface CharacterPose {
+  readonly pose: number;
+  readonly costume: number;
+  readonly face: number;
+  readonly image: string;
+}
+
 export interface CharacterResource {
   readonly id: string;
   readonly name: string;
@@ -14,8 +22,10 @@ export interface CharacterResource {
   readonly pose: number;
   readonly costume: number;
   readonly face: number;
-  /** 立绘图片 data URL（导入后用于预览与属性面板缩略图）。 */
+  /** 默认立绘 data URL（未命中表情集时兜底）。 */
   readonly image?: string;
+  /** 表情集：pose/costume/face → 图片。bsset 预览按此匹配；未配置时为空。 */
+  readonly poses?: CharacterPose[];
 }
 
 export interface BackgroundResource {

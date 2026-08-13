@@ -26,6 +26,8 @@ export interface FakePrim {
   label?: string | undefined;
   /** 可选立绘图片 data URL（资源管理器导入后用于预览真图）。 */
   image?: string | undefined;
+  /** 可选：铺满舞台（背景图）。 */
+  fullscreen?: boolean | undefined;
 }
 
 export interface FakeScript {
