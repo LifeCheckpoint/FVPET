@@ -13,17 +13,23 @@ declare global {
   }
 }
 
-export async function loadBaseBinary(gameId: string, path?: string): Promise<Uint8Array | null> {
+/** 底座二进制缓存：避免每次编译都重新 IPC 读 5MB 原版 HCB。 */
+const baseCache = new Map<string, Promise<Uint8Array | null>>();
+
+export function loadBaseBinary(gameId: string, path?: string): Promise<Uint8Array | null> {
   if (typeof window === 'undefined') {
-    return null;
+    return Promise.resolve(null);
   }
   const bridge = window.baseGame;
   if (!bridge) {
-    return null;
+    return Promise.resolve(null);
   }
-  try {
-    return await bridge.readBaseHcb(gameId, path);
-  } catch {
-    return null;
+  const key = `${gameId}:${path ?? ''}`;
+  const cached = baseCache.get(key);
+  if (cached) {
+    return cached;
   }
+  const loading = bridge.readBaseHcb(gameId, path).catch(() => null);
+  baseCache.set(key, loading);
+  return loading;
 }

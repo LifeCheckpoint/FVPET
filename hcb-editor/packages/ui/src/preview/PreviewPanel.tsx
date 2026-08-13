@@ -237,7 +237,7 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
     };
   }, [applyEvents]);
 
-  // 文档变化 → 重算投影队列 + 重载真实引擎 + 重绘回退 prim
+  // 文档/资源变化 → 重算投影队列 + 重绘回退 prim（同步，轻量）+ 真实引擎重载（防抖）。
   useEffect(() => {
     const script: FakeScript = buildPreviewScript(state.document, state.header, state.resources);
     textsRef.current = script.texts;
@@ -248,18 +248,32 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
     setGlobals({});
     setEngineError(null);
 
-    const client = clientRef.current!;
-    let mode: EngineMode = 'fake';
-    engineReadyRef.current = false;
-if (client.supported) {
-  try {
-    const hasContent = state.document.nodes.some(
-      (n) => n.id !== state.document.startNodeId && n.node.kind !== 'label',
-    );
-    if (!hasContent) {
-      mode = 'fake';
-    } else {
-      mode = 'real';
+    const app = appRef.current;
+    const Graphics = graphicsRef.current;
+    const Text = textRef.current;
+    const Sprite = spriteRef.current;
+    const Texture = textureRef.current;
+    if (app && Graphics && Text && Sprite && Texture) {
+      drawPrims(app, Graphics, Text, Sprite, Texture, primsRef.current);
+    }
+
+    // 真实引擎重载防抖：连线/拖动会高频触发 state 变化，
+    // 若每次立即走「5MB 解码 + 编译 + boot」会明显卡顿，改为暂停 500ms 后再跑。
+    const timer = setTimeout(() => {
+      const client = clientRef.current!;
+      engineReadyRef.current = false;
+      if (!client.supported) {
+        setEngineMode('fake');
+        return;
+      }
+      const hasContent = state.document.nodes.some(
+        (n) => n.id !== state.document.startNodeId && n.node.kind !== 'label',
+      );
+      if (!hasContent) {
+        setEngineMode('fake');
+        return;
+      }
+      setEngineMode('real');
       void loadBaseBinary(state.header.game)
         .then((baseData) => {
           const bytes = compileEditorState(state, baseData);
@@ -275,23 +289,10 @@ if (client.supported) {
           setEngineMode('error');
           setEngineError(err instanceof Error ? err.message : String(err));
         });
-    }
-  } catch (err) {
-    mode = 'error';
-    setEngineError(err instanceof Error ? err.message : String(err));
-  }
-}
-    setEngineMode(mode);
+    }, 500);
 
-    const app = appRef.current;
-    const Graphics = graphicsRef.current;
-    const Text = textRef.current;
-    const Sprite = spriteRef.current;
-    const Texture = textureRef.current;
-    if (app && Graphics && Text && Sprite && Texture) {
-      drawPrims(app, Graphics, Text, Sprite, Texture, primsRef.current);
-    }
-  }, [state.document, state.header]);
+    return () => clearTimeout(timer);
+  }, [state.document, state.header, state.resources]);
 
   const advance = useCallback(() => {
     const client = clientRef.current!;
