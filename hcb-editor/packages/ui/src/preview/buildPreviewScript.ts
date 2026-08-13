@@ -31,7 +31,7 @@ export function buildPreviewScript(
   resources?: ProjectResources,
 ): FakeScript {
   const ir = projectToIr(document, header);
-  const texts: { readonly text: string; readonly speaker?: string }[] = [];
+  const texts: { readonly text: string; readonly speaker?: string; readonly audioSrc?: string }[] = [];
   const prims: FakePrim[] = [];
   let primId = 0;
 
@@ -40,6 +40,9 @@ export function buildPreviewScript(
       texts.push({ text: node.text, speaker: node.speaker });
     } else if (node.kind === 'dia') {
       texts.push({ text: node.text });
+    } else if (node.kind === 'audio') {
+      const audio = resources?.audios.find((a) => a.type === node.type && a.number === node.channelOrNum);
+      texts.push({ text: '', ...(audio?.src !== undefined ? { audioSrc: audio.src } : {}) });
     } else if (node.kind === 'bgset') {
       const bg = resources?.backgrounds.find((b) => b.name === node.background);
       if (bg?.image) {

@@ -32,8 +32,14 @@ export function compileEditorStateDetailed(state: EditorState, baseData: Uint8Ar
   const extraBackgrounds = state.resources.backgrounds
     .filter((b) => b.bgFn === null)
     .map((b) => ({ name: b.name, number: b.variant }));
+  const characterChaNums: Record<string, number> = {};
+  for (const c of state.resources.characters) {
+    if (c.chaNum !== undefined) {
+      characterChaNums[c.name] = c.chaNum;
+    }
+  }
 
-  const opts: CompileProjectOptions = { extraCharacters, extraBackgrounds };
+  const opts: CompileProjectOptions = { extraCharacters, extraBackgrounds, characterChaNums };
   if (baseData) {
     opts.baseData = baseData;
   }

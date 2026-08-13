@@ -6,11 +6,13 @@
  * 修改走资源命令（add/edit/remove），undo/redo 由 store 统一接管。
  */
 
-import { useState, type CSSProperties } from 'react';
+import { useRef, useState, type CSSProperties } from 'react';
 import {
   addAudio,
+  addAudios,
   addBackground,
   addCharacter,
+  addCharacters,
   editAudio,
   editBackground,
   editCharacter,
@@ -28,6 +30,15 @@ import { decodeHzc1 } from '../resources/hzc.js';
 import { parseBinArchive } from '../resources/bin.js';
 
 type Tab = 'characters' | 'backgrounds' | 'audios';
+
+/** 导入队列候选（预览 + 勾选 + 一次性提交）。 */
+interface PendingResource {
+  readonly id: string;
+  readonly kind: 'character' | 'audio';
+  readonly name: string;
+  readonly dataUrl: string;
+  checked: boolean;
+}
 
 function intOrNull(value: string): number | null {
   if (value.trim() === '') {
@@ -149,50 +160,83 @@ export interface ResourceManagerProps {
 
 export function ResourceManager({ state, store, onClose }: ResourceManagerProps) {
   const [tab, setTab] = useState<Tab>('characters');
+  const [queue, setQueue] = useState<PendingResource[]>([]);
+  const queueSeq = useRef(0);
 
-  /** 批量导入音频：逐个读文件 → data URL，并按类型自动分配编号（自增）。 */
-  const importAudios = async (files: File[]): Promise<void> => {
-    const maxByType = new Map<string, number>();
-    for (const a of state.resources.audios) {
-      maxByType.set(a.type, Math.max(maxByType.get(a.type) ?? 0, a.number));
+  const enqueue = (items: Omit<PendingResource, 'id' | 'checked'>[]): void => {
+    if (items.length === 0) {
+      return;
     }
-    for (const file of files) {
-      const url = await readFileAsDataUrl(file);
-      const type: AudioResource['type'] = 'bgm';
-      const next = (maxByType.get(type) ?? 0) + 1;
-      maxByType.set(type, next);
-      store.dispatch(addAudio({ type, number: next, label: file.name.replace(/\.[^.]+$/, ''), src: url }));
-    }
+    setQueue((prev) => [
+      ...prev,
+      ...items.map((it) => ({ ...it, id: `q${queueSeq.current++}`, checked: true })),
+    ]);
   };
 
-  /** 导入 hzc/nvsg 立绘：解码 → PNG data URL → 建为角色（.bin 归档按条目批量导入）。 */
+  /** 批量导入音频：读文件 → data URL，进导入队列。 */
+  const importAudios = async (files: File[]): Promise<void> => {
+    const items: Omit<PendingResource, 'id' | 'checked'>[] = [];
+    for (const file of files) {
+      const url = await readFileAsDataUrl(file);
+      items.push({ kind: 'audio', name: file.name.replace(/\.[^.]+$/, ''), dataUrl: url });
+    }
+    enqueue(items);
+  };
+
+  /** 导入 hzc/nvsg 立绘：解码 → PNG data URL，进导入队列（.bin 归档按条目）。 */
   const importHzc = async (files: File[]): Promise<void> => {
+    const items: Omit<PendingResource, 'id' | 'checked'>[] = [];
     for (const file of files) {
       const bytes = new Uint8Array(await file.arrayBuffer());
       const isBin = file.name.toLowerCase().endsWith('.bin');
-      const items = isBin
+      const entries = isBin
         ? parseBinArchive(bytes).map((e) => ({ name: e.name, bytes: e.bytes }))
         : [{ name: file.name, bytes }];
-      for (const item of items) {
+      for (const item of entries) {
         try {
           const img = await decodeHzc1(item.bytes);
           const url = rgbaToPngDataUrl(img.width, img.height, img.rgba);
-          store.dispatch(
-            addCharacter({
-              name: item.name.replace(/\.[^.]+$/, ''),
-              speakFn: null,
-              pose: 0,
-              costume: 0,
-              face: 0,
-              image: url,
-              poses: [],
-            }),
-          );
+          items.push({ kind: 'character', name: item.name.replace(/\.[^.]+$/, ''), dataUrl: url });
         } catch {
           // 非 hzc 图片条目跳过
         }
       }
     }
+    enqueue(items);
+  };
+
+  /** 一次性提交导入队列（勾选项 → 一次 undo 步）。 */
+  const commitQueue = (): void => {
+    const selected = queue.filter((q) => q.checked);
+    const characters = selected
+      .filter((q) => q.kind === 'character')
+      .map((q) => ({ name: q.name, speakFn: null, pose: 0, costume: 0, face: 0, image: q.dataUrl, poses: [] }));
+    const audios = selected
+      .filter((q) => q.kind === 'audio')
+      .map((q) => ({ type: 'bgm' as const, number: 0, label: q.name, src: q.dataUrl }));
+    if (characters.length > 0) {
+      store.dispatch(addCharacters(characters));
+    }
+    if (audios.length > 0) {
+      const maxByType = new Map<string, number>();
+      for (const a of state.resources.audios) {
+        maxByType.set(a.type, Math.max(maxByType.get(a.type) ?? 0, a.number));
+      }
+      let next = maxByType.get('bgm') ?? 0;
+      store.dispatch(addAudios(audios.map((a) => ({ ...a, number: ++next }))));
+    }
+    setQueue((prev) => prev.filter((q) => !selected.includes(q)));
+  };
+
+  const toggleQueueItem = (id: string): void => {
+    setQueue((prev) => prev.map((q) => (q.id === id ? { ...q, checked: !q.checked } : q)));
+  };
+
+  /** 拖拽导入：图片 → 角色候选，音频 → 音频候选。 */
+  const onDropFiles = (files: File[]): void => {
+    const images = files.filter((f) => f.type.startsWith('image/') || /\.(hzc1|bin)$/i.test(f.name));
+    const audios = files.filter((f) => f.type.startsWith('audio/'));
+    void importHzc(images).then(() => importAudios(audios));
   };
 
   return (
@@ -216,7 +260,47 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
         </button>
       </div>
 
-      <div className="workspace__body">
+      <div
+        className="workspace__body"
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => {
+          e.preventDefault();
+          const files = Array.from(e.dataTransfer.files);
+          if (files.length > 0) {
+            onDropFiles(files);
+          }
+        }}
+      >
+          {queue.length > 0 && (
+            <div className="import-queue">
+              <div className="import-queue__head">
+                <span className="import-queue__title">
+                  导入队列（{queue.filter((q) => q.checked).length}/{queue.length}）
+                </span>
+                <div className="import-queue__actions">
+                  <button type="button" className="btn btn--secondary" onClick={() => setQueue([])}>
+                    清空
+                  </button>
+                  <button type="button" className="btn btn--primary" onClick={commitQueue}>
+                    确认导入
+                  </button>
+                </div>
+              </div>
+              <div className="import-queue__grid">
+                {queue.map((q) => (
+                  <label className="import-queue__item" key={q.id}>
+                    <input type="checkbox" checked={q.checked} onChange={() => toggleQueueItem(q.id)} />
+                    {q.kind === 'character' ? (
+                      <img className="import-queue__thumb" src={q.dataUrl} alt={q.name} />
+                    ) : (
+                      <span className="import-queue__badge">音频</span>
+                    )}
+                    <span className="import-queue__name">{q.name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
           {tab === 'characters' && (
             <div className="resource-grid">
               {state.resources.characters.length === 0 && (

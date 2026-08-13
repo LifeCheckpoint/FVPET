@@ -118,7 +118,7 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
     clientRef.current = new RfvpClient();
   }
 
-  const textsRef = useRef<readonly { readonly text: string; readonly speaker?: string }[]>([]);
+  const textsRef = useRef<readonly { readonly text: string; readonly speaker?: string; readonly audioSrc?: string }[]>([]);
   const cursorRef = useRef(0);
   const engineReadyRef = useRef(false);
 
@@ -322,6 +322,10 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
       cursorRef.current += 1;
       setText(next.text);
       setDone(false);
+      if (next.audioSrc) {
+        const audio = new Audio(next.audioSrc);
+        void audio.play().catch(() => {});
+      }
     } else {
       setDone(true);
     }
