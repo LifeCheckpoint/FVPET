@@ -6,8 +6,11 @@
 
 import type { HcbSysdesc, Nls, SyscallEntry } from '@hcb-editor/hcb/core';
 import type { IrScript } from '@hcb-editor/hcb/ir';
-import type { GameTables } from '../templates/types.js';
-import { compile, compileWithBase } from '../passes/compile.js';
+import type { GameTables, TemplateCtx } from '../templates/types.js';
+import { compileWithBaseDetailed } from '../passes/compile.js';
+import { assembleFlatWithLabels } from '../passes/assemble.js';
+import { encodeFlatItems } from '../passes/encode.js';
+import { lower } from '../passes/lower.js';
 import { sakuraMoyuBaseData } from './data/sakura-moyu.js';
 import { generateSpeakFunctions } from './function-gen.js';
 
@@ -111,12 +114,23 @@ export interface CompileProjectOptions {
 /** Sakura moyu 背景/立绘资源加载共享函数（无专用函数体时回退值）。 */
 const SHARED_BG_LOADER = 0x00037421;
 
+export interface CompileProjectResult {
+  readonly bytes: Uint8Array;
+  /** label → 绝对代码地址（供 label 断点 jump）。 */
+  readonly labels: ReadonlyMap<string, number>;
+}
+
 /**
  * 语义 IR → HCB：按 IR header.game 加载底座（sysdesc + 表），再走五段式编译。
  * - 提供 baseData：compileWithBase 拼接底座库 → 可独立运行的 .hcb（真实引擎可执行）。
  * - 提供 extraCharacters/extraBackgrounds：新增资源在编译期生成函数体 / 分配编号。
  */
 export function compileProject(ir: IrScript, nls: Nls, opts: CompileProjectOptions = {}): Uint8Array {
+  return compileProjectDetailed(ir, nls, opts).bytes;
+}
+
+/** compileProject + 返回 label 绝对地址表（供真实引擎 label 断点 jump）。 */
+export function compileProjectDetailed(ir: IrScript, nls: Nls, opts: CompileProjectOptions = {}): CompileProjectResult {
   const { sysdesc, tables } = loadBaseGame(ir.header.game);
 
   let characters = tables.characters;
@@ -167,7 +181,12 @@ export function compileProject(ir: IrScript, nls: Nls, opts: CompileProjectOptio
   const ctx = { sysdesc, nls, tables: { characters, backgrounds, globals: tables.globals } };
 
   if (opts.baseData) {
-    return compileWithBase(ir, ctx, opts.baseData, extraFuncBytes);
+    return compileWithBaseDetailed(ir, ctx, opts.baseData, extraFuncBytes);
   }
-  return compile(ir, ctx);
+
+  // 脚本-only：代码区起点为 4，label 相对偏移即绝对地址。
+  const templateCtx: TemplateCtx = { nls, tables: ctx.tables };
+  const blocks = lower(ir, templateCtx);
+  const { items, labels } = assembleFlatWithLabels(blocks, sysdesc, nls);
+  return { bytes: encodeFlatItems(items, sysdesc, nls), labels };
 }

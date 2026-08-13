@@ -11,6 +11,7 @@ import type { Instruction } from '@hcb-editor/hcb/core';
 import { IrScript } from '@hcb-editor/hcb/ir';
 import { compile, encodeFromFlat } from '@hcb-editor/compiler/passes';
 import {
+  arithmeticTemplate,
   audioTemplate,
   bgsetTemplate,
   branchTemplate,
@@ -22,6 +23,7 @@ import {
   inputTemplate,
   jumpTemplate,
   measureCoverage,
+  msgsetTemplate,
   selsetTemplate,
   speakTemplate,
   stageTemplate,
@@ -428,6 +430,7 @@ function cmdCoverage(args: CliArgs): void {
     selsetTemplate,
     bgsetTemplate,
     cgsetTemplate,
+    msgsetTemplate,
     bssetTemplate,
     speakTemplate,
     diaTemplate,
@@ -437,6 +440,7 @@ function cmdCoverage(args: CliArgs): void {
     branchTemplate,
     stageTemplate,
     inputTemplate,
+    arithmeticTemplate,
     controlTemplate,
     callTemplate,
     jumpTemplate,

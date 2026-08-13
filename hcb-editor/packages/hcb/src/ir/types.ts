@@ -82,6 +82,11 @@ export const IrNode = z.discriminatedUnion('kind', [
   }),
   z.object({ kind: z.literal('thread'), slot: z.number(), entry: z.string() }),
   z.object({ kind: z.literal('jump'), target: z.string() }), // 无条件跳转（目标 label，由 jump 连线解析）
+  z.object({ kind: z.literal('wait'), ms: z.number() }), // 等待指定毫秒
+  z.object({
+    kind: z.literal('msgset'),
+    position: z.enum(['middle', 'normal', 'boxin', 'boxout']), // 对话栏位置
+  }),
   z.object({
     kind: z.literal('raw'), // 逃生舱：模板覆盖不到的 5%
     bytes: z.instanceof(Uint8Array),

@@ -9,6 +9,8 @@ import type { AsmBlock, AsmInstruction, AsmPattern, Template, TemplateCtx } from
 
 type AudioNode = Extract<IrNode, { kind: 'audio' }>;
 type ThreadNode = Extract<IrNode, { kind: 'thread' }>;
+type WaitNode = Extract<IrNode, { kind: 'wait' }>;
+type MsgsetNode = Extract<IrNode, { kind: 'msgset' }>;
 
 const PUSH: AsmPattern = {
   anyOf: [
@@ -125,12 +127,69 @@ export const threadTemplate: Template<ThreadNode> = {
   },
 };
 
-export const waitTemplate: Template<never> = {
+export const waitTemplate: Template<WaitNode> = {
   id: 'fvp.wait',
   signature: [{ repeat: { pattern: PUSH, min: 0, max: 2 } }, { syscallAny: ['TimerSet', 'ThreadWait', 'ThreadSleep'] }],
-  slots: {},
-  instantiate(_node: never, _ctx: TemplateCtx): AsmBlock[] {
-    throw new Error('fvp.wait 暂无独立 IR 节点，仅用于反编译识别');
+  slots: { ms: { kind: 'i16', doc: '等待毫秒数' } },
+  instantiate(node, _ctx): AsmBlock[] {
+    return [{ instructions: [{ op: 'push_i16', value: node.ms }, { op: 'syscall', name: 'ThreadWait' }] }];
+  },
+};
+
+/** Sakura moyu 对话栏设置函数族（msgset 模板）。 */
+const MSGSET_FNS: readonly number[] = [0x000349f1, 0x0003b797, 0x000864f4];
+
+export const msgsetTemplate: Template<MsgsetNode> = {
+  id: 'fvp.msgset',
+  signature: [{ repeat: { pattern: PUSH, min: 1, max: 3 } }, { callToAny: MSGSET_FNS }],
+  slots: { position: { kind: 'string', doc: '对话栏位置：middle / normal / boxin / boxout' } },
+  instantiate(node, _ctx): AsmBlock[] {
+    switch (node.position) {
+      case 'middle':
+        return [
+          {
+            instructions: [
+              { op: 'push_i8', value: 1 },
+              { op: 'push_i8', value: 1 },
+              { op: 'neg' },
+              { op: 'call', target: 'f_000349f1' },
+            ],
+          },
+        ];
+      case 'normal':
+        return [
+          {
+            instructions: [
+              { op: 'push_i8', value: 0 },
+              { op: 'push_nil' },
+              { op: 'call', target: 'f_000349f1' },
+              { op: 'push_i8', value: 0 },
+              { op: 'call', target: 'f_0003b797' },
+            ],
+          },
+        ];
+      case 'boxin':
+        return [
+          {
+            instructions: [
+              { op: 'push_i8', value: 0 },
+              { op: 'push_nil' },
+              { op: 'call', target: 'f_000864f4' },
+            ],
+          },
+        ];
+      case 'boxout':
+        return [
+          {
+            instructions: [
+              { op: 'push_i8', value: 1 },
+              { op: 'push_i8', value: 2 },
+              { op: 'neg' },
+              { op: 'call', target: 'f_000864f4' },
+            ],
+          },
+        ];
+    }
   },
 };
 
@@ -172,6 +231,19 @@ export const jumpTemplate: Template<never> = {
   slots: {},
   instantiate(_node: never, _ctx: TemplateCtx): AsmBlock[] {
     throw new Error('fvp.jump 由 lower 内联展开，此处仅用于反编译识别');
+  },
+};
+
+/** 孤立 G[]/栈运算（push+算术链 + pop 结尾），仅用于反编译覆盖率识别。 */
+export const arithmeticTemplate: Template<never> = {
+  id: 'fvp.arithmetic',
+  signature: [
+    { repeat: { pattern: PUSH, min: 2, max: 32 } },
+    { anyOf: ['pop_global', 'pop_stack', 'pop_global_table', 'pop_local_table'] },
+  ],
+  slots: {},
+  instantiate(_node: never, _ctx: TemplateCtx): AsmBlock[] {
+    throw new Error('fvp.arithmetic（孤立 G[]/栈运算）仅用于反编译识别');
   },
 };
 

@@ -277,8 +277,23 @@ function resolveRawTarget(target: string, labelAddr: ReadonlyMap<string, number>
   return num;
 }
 
+/** assembleFlat 的结果 + label 地址表（label → 相对代码区偏移，从 4 起算）。 */
+export interface AssembleFlatResult {
+  readonly items: FlatItem[];
+  readonly labels: ReadonlyMap<string, number>;
+}
+
 /** 与 assemble 相同，但保留 raw 块（字节透传），并把 raw 重定位目标解析为数值。 */
 export function assembleFlat(blocks: readonly AsmBlock[], sysdesc: HcbSysdesc, nls: Nls): FlatItem[] {
+  return assembleFlatWithLabels(blocks, sysdesc, nls).items;
+}
+
+/** assembleFlat + 返回 label → 相对偏移表（供 label 断点跳转用）。 */
+export function assembleFlatWithLabels(
+  blocks: readonly AsmBlock[],
+  sysdesc: HcbSysdesc,
+  nls: Nls,
+): AssembleFlatResult {
   const labelAddr = new Map<string, number>();
   let addr = 4;
   for (const block of blocks) {
@@ -310,5 +325,5 @@ export function assembleFlat(blocks: readonly AsmBlock[], sysdesc: HcbSysdesc, n
       cur += block.raw.bytes.length;
     }
   }
-  return out;
+  return { items: out, labels: labelAddr };
 }

@@ -9,9 +9,11 @@ import {
   bgsetTemplate,
   bssetTemplate,
   diaTemplate,
+  msgsetTemplate,
   selsetTemplate,
   speakTemplate,
   threadTemplate,
+  waitTemplate,
 } from '../templates/index.js';
 import type { AsmBlock, AsmInstruction, TemplateCtx } from '../templates/types.js';
 
@@ -79,6 +81,12 @@ export function lower(ir: IrScript, ctx: TemplateCtx): AsmBlock[] {
         break;
       case 'jump':
         blocks.push({ instructions: [{ op: 'jmp', target: node.target }] });
+        break;
+      case 'wait':
+        blocks.push(...waitTemplate.instantiate(node, ctx));
+        break;
+      case 'msgset':
+        blocks.push(...msgsetTemplate.instantiate(node, ctx));
         break;
       case 'branch':
         blocks.push({
