@@ -7,7 +7,7 @@ import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 
 import { ReactFlowProvider } from '@xyflow/react';
 import { deserializeProject } from '@hcb-editor/editor';
 import { saveBinaryFile } from '../fileDialog.js';
-import { openProjectDir, saveProjectDir } from '../projectDir.js';
+import { openProjectDir, saveProjectDir, saveProjectDirAs } from '../projectDir.js';
 import { loadBaseBinary } from '../preview/baseBinary.js';
 import { compileEditorState } from '../preview/compileFromState.js';
 import { useEditorStore } from '../store/useEditorStore.js';
@@ -59,6 +59,7 @@ export function AppShell() {
   const [showSettings, setShowSettings] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
   const wizardShown = useRef(false);
+  const [savedPath, setSavedPath] = useState<string | null>(null);
 
   // 面板尺寸（可拖拽调节，内存态，不持久化）。
   const [leftWidth, setLeftWidth] = useState(252);
@@ -91,12 +92,28 @@ export function AppShell() {
     flowRef.current?.locate(nodeId);
   };
 const saveProject = () => {
-  void saveProjectDir(state).then((savedPath) => {
-    if (savedPath) {
+  void saveProjectDir(state).then((path) => {
+    if (path) {
+      setSavedPath(path);
       store.markSaved();
     }
   });
 };
+
+// 自动保存：保存过工程目录后，状态变化 3 秒静默写回（Electron 专有，浏览器忽略）。
+useEffect(() => {
+  if (!savedPath || !store.isDirty) {
+    return;
+  }
+  const timer = setTimeout(() => {
+    void saveProjectDirAs(savedPath, state)
+      .then(() => store.markSaved())
+      .catch(() => {
+        // 自动保存失败（目录被移动等）静默忽略，不打断用户。
+      });
+  }, 3000);
+  return () => clearTimeout(timer);
+}, [savedPath, state, store]);
 
 const openProject = (file: File) => {
   void file.text().then((text) => {

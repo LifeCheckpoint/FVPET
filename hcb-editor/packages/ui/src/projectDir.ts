@@ -12,6 +12,8 @@ export interface ProjectDirAsset {
 
 export interface ProjectDirBridge {
   save(defaultName: string, projectJson: string, assets: ProjectDirAsset[]): Promise<string | null>;
+  /** 静默保存到已知目录（自动保存用，不弹对话框）。 */
+  saveAs(dir: string, projectJson: string, assets: ProjectDirAsset[]): Promise<string>;
   open(): Promise<{ projectJson: string; assets: ProjectDirAsset[] } | null>;
 }
 
@@ -41,6 +43,15 @@ export async function saveProjectDir(state: EditorState): Promise<string | null>
     'project.hcbproj.json',
   );
   return null;
+}
+
+/** 静默保存到已知目录（自动保存用，Electron 专有）。 */
+export async function saveProjectDirAs(dir: string, state: EditorState): Promise<string> {
+  if (typeof window !== 'undefined' && window.projectDir) {
+    const { projectJson, assets } = serializeProjectToDir(state);
+    return window.projectDir.saveAs(dir, projectJson, assets.map((a) => ({ ...a })));
+  }
+  throw new Error('当前环境不支持目录保存（仅 Electron 支持自动保存）');
 }
 
 /** 打开工程目录（Electron）；浏览器返回 null（调用方用 input[type=file] 兜底）。 */

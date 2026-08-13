@@ -70,6 +70,11 @@ const projectDirApi = {
     projectJson: string,
     assets: ProjectDirAsset[],
   ): Promise<string | null> => ipcRenderer.invoke('project-dir:save', { defaultName, projectJson, assets }),
+  saveAs: (
+    dir: string,
+    projectJson: string,
+    assets: ProjectDirAsset[],
+  ): Promise<string> => ipcRenderer.invoke('project-dir:save-as', { dir, projectJson, assets }),
   open: (): Promise<{ projectJson: string; assets: ProjectDirAsset[] } | null> =>
     ipcRenderer.invoke('project-dir:open'),
 };

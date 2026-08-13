@@ -28,6 +28,17 @@ export interface ProjectDirAsset {
   readonly bytes: Uint8Array;
 }
 
+/** 把工程目录写入磁盘（project.json + assets/）。 */
+function writeProjectDir(dir: string, projectJson: string, assets: ProjectDirAsset[]): void {
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'project.json'), projectJson, 'utf8');
+  for (const asset of assets) {
+    const assetPath = path.join(dir, asset.path);
+    fs.mkdirSync(path.dirname(assetPath), { recursive: true });
+    fs.writeFileSync(assetPath, new Uint8Array(asset.bytes));
+  }
+}
+
 /** 工程目录桥：工程 = project.json + assets/ 目录，资源文件落盘。 */
 export function registerProjectDirIpc(): void {
   ipcMain.handle(
@@ -43,18 +54,22 @@ export function registerProjectDirIpc(): void {
       if (result.canceled || !result.filePath) {
         return null;
       }
-      const dir = result.filePath;
-      fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(path.join(dir, 'project.json'), payload.projectJson, 'utf8');
-      for (const asset of payload.assets) {
-        const assetPath = path.join(dir, asset.path);
-        fs.mkdirSync(path.dirname(assetPath), { recursive: true });
-        fs.writeFileSync(assetPath, new Uint8Array(asset.bytes));
-      }
-      return dir;
+      writeProjectDir(result.filePath, payload.projectJson, payload.assets);
+      return result.filePath;
     },
   );
 
+  // 静默保存到已知目录（自动保存用，不弹对话框）。
+  ipcMain.handle(
+    'project-dir:save-as',
+    async (
+      _event,
+      payload: { dir: string; projectJson: string; assets: ProjectDirAsset[] },
+    ): Promise<string> => {
+      writeProjectDir(payload.dir, payload.projectJson, payload.assets);
+      return payload.dir;
+    },
+  );
   ipcMain.handle(
     'project-dir:open',
     async (): Promise<{ projectJson: string; assets: ProjectDirAsset[] } | null> => {
