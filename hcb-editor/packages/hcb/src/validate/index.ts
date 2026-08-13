@@ -34,7 +34,13 @@ export function validateIr(ir: IrScript): ValidationIssue[] {
 
   ir.nodes.forEach((node, index) => {
     const check = (target: string, what: string): void => {
-      if (target !== '' && !labels.has(target)) {
+      if (target === '') {
+        issues.push({
+          nodeIndex: index,
+          kind: 'dangling_label',
+          message: `${what}尚未连线（目标标签为空）`,
+        });
+      } else if (!labels.has(target)) {
         issues.push({
           nodeIndex: index,
           kind: 'dangling_label',

@@ -41,4 +41,17 @@ describe('validateIr', () => {
     expect(issues).toHaveLength(1);
     expect(issues[0]!.kind).toBe('duplicate_label');
   });
+
+  it('flags unwired control-flow targets（空目标）', () => {
+    const issues = validateIr(
+      script([
+        { kind: 'label', name: 'start' },
+        { kind: 'jump', target: '' },
+        { kind: 'branch', cond: { op: 'eq', a: 0, b: 0 }, then: '', else: '' },
+        { kind: 'thread', slot: 0, entry: '' },
+      ]),
+    );
+    expect(issues).toHaveLength(4);
+    expect(issues.every((i) => i.kind === 'dangling_label')).toBe(true);
+  });
 });
