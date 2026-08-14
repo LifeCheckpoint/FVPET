@@ -16,6 +16,7 @@ export interface RfvpBridge {
     nls: string,
     scriptEntry: number,
     labels?: Readonly<Record<string, number>>,
+    resourceRoot?: string,
   ): Promise<RfvpLoadResult>;
   jump(label: string): Promise<void>;
   advance(): Promise<void>;

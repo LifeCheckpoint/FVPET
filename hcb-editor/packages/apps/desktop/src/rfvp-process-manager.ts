@@ -112,6 +112,7 @@ export class RfvpProcessManager {
     nls: string,
     scriptEntry: number,
     labels?: Readonly<Record<string, number>>,
+    resourceRoot?: string,
   ): Promise<RfvpLoadResult> {
     await this.start();
     const child = this.child;
@@ -127,7 +128,15 @@ export class RfvpProcessManager {
         this.clearLoadWaiter(new Error('引擎装载超时'));
       }, LOAD_TIMEOUT_MS);
 
-      this.send({ op: 'load', hcbPath: file, nls, scriptEntry, labels: labels ?? {} });
+      this.send({
+        op: 'load',
+        hcbPath: file,
+        nls,
+        scriptEntry,
+        labels: labels ?? {},
+        engine: 'full',
+        resourceRoot: resourceRoot ?? '',
+      });
     });
   }
 

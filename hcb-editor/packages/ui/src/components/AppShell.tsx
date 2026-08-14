@@ -12,6 +12,7 @@ import { loadBaseBinary } from '../preview/baseBinary.js';
 import { compileEditorState } from '../preview/compileFromState.js';
 import { useEditorStore } from '../store/useEditorStore.js';
 import { usePreferences } from '../preferences/usePreferences.js';
+import { deriveResourceRoot } from '../preferences/preferences.js';
 import { Palette } from './Palette.js';
 import { PropertyPanel } from './PropertyPanel.js';
 import { ScriptTextView } from './ScriptTextView.js';
@@ -314,7 +315,12 @@ const exportHcb = () => {
 
           <section className="app__right" ref={rightRef} style={{ width: rightWidth }}>
             <div className="app__preview" style={{ flex: `${previewRatio} 1 0` }}>
-              <PreviewPanel state={state} ratio={prefs.previewRatio} onLocate={locateNode} />
+              <PreviewPanel
+                state={state}
+                ratio={prefs.previewRatio}
+                resourceRoot={deriveResourceRoot(prefs.graphBgBinPath, prefs.graphBsBinPath)}
+                onLocate={locateNode}
+              />
             </div>
             <div
               className="app__resizer app__resizer--row"

@@ -55,3 +55,15 @@ export function savePreferences(prefs: Preferences): void {
     // 存储不可用时静默降级。
   }
 }
+
+/**
+ * 从已配置的资源归档路径推导真实引擎资源根目录：取第一个非空路径的父目录。
+ * 兼容 `/` 与 `\` 分隔符；两个都为空时返回 `''`。
+ */
+export function deriveResourceRoot(graphBgBinPath: string, graphBsBinPath: string): string {
+  const first = [graphBgBinPath, graphBsBinPath].find((p) => p.trim() !== '');
+  if (!first) {
+    return '';
+  }
+  return first.split(/[\\/]/).slice(0, -1).join('/');
+}

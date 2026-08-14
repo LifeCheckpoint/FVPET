@@ -23,11 +23,12 @@ export class RfvpClient {
     nls: string,
     scriptEntry: number,
     labels?: Readonly<Record<string, number>>,
+    resourceRoot?: string,
   ): Promise<RfvpLoadResult | null> {
     if (!this.bridge) {
       return Promise.resolve(null);
     }
-    return this.bridge.load(bytes, nls, scriptEntry, labels);
+    return this.bridge.load(bytes, nls, scriptEntry, labels, resourceRoot);
   }
 
   jump(label: string): Promise<void> {

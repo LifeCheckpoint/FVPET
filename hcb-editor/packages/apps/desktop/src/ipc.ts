@@ -226,6 +226,7 @@ interface RfvpLoadPayload {
   readonly nls: string;
   readonly scriptEntry: number;
   readonly labels?: Readonly<Record<string, number>>;
+  readonly resourceRoot?: string;
 }
 
 export function registerRfvpIpc(manager: RfvpProcessManager): void {
@@ -242,7 +243,7 @@ export function registerRfvpIpc(manager: RfvpProcessManager): void {
   });
 
   ipcMain.handle('rfvp:load', (_event, payload: RfvpLoadPayload): Promise<RfvpLoadResult> => {
-    return manager.load(payload.bytes, payload.nls, payload.scriptEntry, payload.labels);
+    return manager.load(payload.bytes, payload.nls, payload.scriptEntry, payload.labels, payload.resourceRoot);
   });
 
   ipcMain.handle('rfvp:jump', (_event, payload: { label: string }) => {

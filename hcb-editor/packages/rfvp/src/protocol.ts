@@ -56,6 +56,13 @@ export const RfvpEvent = z.discriminatedUnion('type', [
       }),
     ),
   }),
+  z.object({
+    type: z.literal('frame'),
+    width: z.number().int().positive(),
+    height: z.number().int().positive(),
+    format: z.literal('rgba8'),
+    data: z.string(),
+  }),
   z.object({ type: z.literal('g'), index: z.number(), value: z.unknown() }),
   z.object({ type: z.literal('done') }),
   z.object({ type: z.literal('error'), message: z.string() }),
