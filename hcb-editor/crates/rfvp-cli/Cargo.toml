@@ -5,7 +5,7 @@ edition = "2021"
 description = "Headless rfvp runner: boots a compiled HCB and speaks the hcb-editor stdio JSON protocol"
 
 [dependencies]
-rfvp = { path = "../../vendor/rfvp/crates/rfvp", default-features = false, features = ["soft-render-core", "no-audio", "zlib-flate2"] }
+rfvp = { path = "../../vendor/rfvp/crates/rfvp", default-features = false, features = ["soft-render-core", "audio", "zlib-flate2"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 base64 = "0.22"

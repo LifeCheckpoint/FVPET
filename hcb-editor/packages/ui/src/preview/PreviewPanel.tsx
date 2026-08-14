@@ -91,6 +91,13 @@ export function PreviewPanel({ state, ratio, resourceRoot, onLocate }: PreviewPa
   const [engineError, setEngineError] = useState<string | null>(null);
   const [audioHint, setAudioHint] = useState<string | null>(null);
 
+  // position 事件 → 节点定位：onLocate 以 ref 保持最新（applyEvents 为空依赖闭包）。
+  const onLocateRef = useRef(onLocate);
+  onLocateRef.current = onLocate;
+  /** label 节点 id → 编译后绝对地址（position 事件反查当前所在 label 块）。 */
+  const labelAddrByIdRef = useRef<ReadonlyMap<string, number>>(new Map());
+  const lastLocatedNodeIdRef = useRef<string | null>(null);
+
   const applyEvents = useCallback((events: readonly RfvpEvent[]) => {
     for (const ev of events) {
       switch (ev.type) {
@@ -110,6 +117,22 @@ export function PreviewPanel({ state, ratio, resourceRoot, onLocate }: PreviewPa
             `${ev.action === 'play' ? '播放' : ev.action === 'stop' ? '停止' : '加载'}音频 slot ${ev.channel}`,
           );
           break;
+        // 引擎执行位置：反查「不超过 pc 的最大 label 地址」→ 对应 label 节点 → 高亮定位。
+        case 'position': {
+          let bestAddr = -1;
+          let bestNodeId: string | null = null;
+          for (const [nodeId, addr] of labelAddrByIdRef.current) {
+            if (addr <= ev.pc && addr > bestAddr) {
+              bestAddr = addr;
+              bestNodeId = nodeId;
+            }
+          }
+          if (bestNodeId !== null && lastLocatedNodeIdRef.current !== bestNodeId) {
+            lastLocatedNodeIdRef.current = bestNodeId;
+            onLocateRef.current?.(bestNodeId);
+          }
+          break;
+        }
         // full 引擎回传的完整 RGBA 帧：base64 解码后 1:1 写入 canvas。
         case 'frame': {
           const canvas = canvasRef.current;
@@ -190,6 +213,16 @@ export function PreviewPanel({ state, ratio, resourceRoot, onLocate }: PreviewPa
     setEngineError(null);
     setAudioHint(null);
 
+    // 重置位置映射（编译结果异步到达前先清空，避免旧映射残留）。
+    labelAddrByIdRef.current = new Map();
+    lastLocatedNodeIdRef.current = null;
+    const labelNameToId = new Map<string, string>();
+    for (const n of state.document.nodes) {
+      if (n.node.kind === 'label') {
+        labelNameToId.set(n.node.name, n.id);
+      }
+    }
+
     // 真实引擎重载防抖：连线/拖动会高频触发 state 变化，
     // 若每次立即走「5MB 解码 + 编译 + boot」会明显卡顿，改为暂停 500ms 后再跑。
     const timer = setTimeout(() => {
@@ -213,6 +246,15 @@ export function PreviewPanel({ state, ratio, resourceRoot, onLocate }: PreviewPa
       void loadBaseBinary(state.header.game)
         .then((baseData) => {
           const { bytes, scriptEntry, labels } = compileEditorStateDetailed(state, baseData);
+          const addrById = new Map<string, number>();
+          const labelToAddr = new Map(Object.entries(labels));
+          for (const [name, id] of labelNameToId) {
+            const addr = labelToAddr.get(name);
+            if (addr !== undefined) {
+              addrById.set(id, addr);
+            }
+          }
+          labelAddrByIdRef.current = addrById;
           return client.load(bytes, state.header.nls, scriptEntry, labels, resourceRoot);
         })
         .then((loaded) => {

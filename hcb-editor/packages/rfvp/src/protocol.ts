@@ -46,6 +46,7 @@ export const RfvpEvent = z.discriminatedUnion('type', [
   z.object({ type: z.literal('text'), slot: z.number(), text: z.string() }),
   z.object({ type: z.literal('waiting_text') }),
   z.object({ type: z.literal('audio'), channel: z.number(), action: z.enum(['load', 'play', 'stop']) }),
+  z.object({ type: z.literal('position'), pc: z.number().int().nonnegative() }),
   z.object({ type: z.literal('thread'), slot: z.number(), status: z.number() }),
   z.object({
     type: z.literal('prims'),

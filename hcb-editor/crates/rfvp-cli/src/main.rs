@@ -273,6 +273,11 @@ fn emit_error(message: String) {
     emit(&json!({ "type": "error", "message": message }));
 }
 
+/// 引擎当前执行位置（主 context 的 program counter）。
+fn emit_position(pc: usize) {
+    emit(&json!({ "type": "position", "pc": pc }));
+}
+
 fn emit_audio_events(runtime: &mut PortableRuntime) {
     for (channel, action) in runtime.drain_audio_events() {
         emit(&json!({ "type": "audio", "channel": channel, "action": action }));
@@ -457,6 +462,7 @@ fn main() {
                             match fh.tick() {
                                 Ok(tick) => {
                                     emit_frame(fh);
+                                    emit_position(tick.current_pc);
                                     if tick.main_thread_exited {
                                         emit(&json!({ "type": "done" }));
                                     }
@@ -536,6 +542,7 @@ fn main() {
                 match fh.tick() {
                     Ok(tick) => {
                         emit_frame(fh);
+                        emit_position(tick.current_pc);
                         if tick.main_thread_exited {
                             emit(&json!({ "type": "done" }));
                         }
@@ -555,6 +562,7 @@ fn main() {
                     match fh.tick() {
                         Ok(tick) => {
                             emit_frame(fh);
+                            emit_position(tick.current_pc);
                             if tick.main_thread_exited {
                                 emit(&json!({ "type": "done" }));
                             }
@@ -586,6 +594,7 @@ fn main() {
             "skip" => {
                 if let Some(fh) = full_host.as_mut() {
                     let mut done = false;
+                    let mut last_pc = 0usize;
                     for _ in 0..100_000 {
                         fh.handle_event(RfvpEvent::PointerUp {
                             button: PointerButton::Left,
@@ -594,6 +603,7 @@ fn main() {
                         });
                         match fh.tick() {
                             Ok(tick) => {
+                                last_pc = tick.current_pc;
                                 if tick.main_thread_exited {
                                     done = true;
                                     break;
@@ -606,6 +616,7 @@ fn main() {
                         }
                     }
                     emit_frame(fh);
+                    emit_position(last_pc);
                     if done {
                         emit(&json!({ "type": "done" }));
                     }
