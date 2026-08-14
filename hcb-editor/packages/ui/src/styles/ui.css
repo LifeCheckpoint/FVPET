@@ -933,6 +933,17 @@
   outline: none;
 }
 
+.form-row__path {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.form-row__path .form-row__control {
+  flex: 1;
+  min-width: 0;
+}
+
 .form-row__control:focus {
   border-color: var(--border-accent);
   box-shadow: 0 0 0 1px var(--accent);

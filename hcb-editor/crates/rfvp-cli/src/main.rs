@@ -1,12 +1,16 @@
 //! rfvp-cli：无头 rfvp 运行器。
 //!
 //! 从 stdin 读行分隔 JSON 请求（hcb-editor 协议），向 stdout 写行分隔 JSON 事件。
-//! 封装 `rfvp::portable::PortableRuntime`：boot 编译后的 HCB、tick VM、dump prim。
-//! 文本队列仍由编辑器投影提供（PortableRuntime 只暴露 prim/线程状态）。
+//!
+//! 两条执行路径（由 `load` 请求的 `engine` 字段选择，缺省 `portable`）：
+//! - `portable`：封装 `rfvp::portable::PortableRuntime`（只捕获 draw_solid 矩形，输出 prim）。
+//! - `full`：封装 `rfvp::preview_host::PreviewHost`（完整引擎 + software renderer，输出 RGBA frame）。
 
 use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
 
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use base64::Engine as _;
 use rfvp::host_api::{
     AudioParams, AudioStreamDesc, AudioStreamId, ColorRgba, DrawSolidCommand, DrawSpriteCommand,
     EncodedAudioKind, PointerButton, RfvpAudio, RfvpClock, RfvpEvent, RfvpFile, RfvpFileInfo,
@@ -14,6 +18,8 @@ use rfvp::host_api::{
     TextureRect,
 };
 use rfvp::portable::{Nls, PortableRuntime, Variant};
+use rfvp::preview_host::PreviewHost;
+use rfvp::script::parser::Nls as FullNls;
 use serde_json::{json, Value};
 
 // ---------------------------------------------------------------------------
@@ -299,11 +305,43 @@ fn emit_prims(host: &mut CliHost, runtime: &mut PortableRuntime) {
     emit(&json!({ "type": "prims", "prims": prims }));
 }
 
+fn emit_frame(host: &PreviewHost) {
+    let fb = host.framebuffer();
+    let width = fb.width();
+    let height = fb.height();
+    let stride = fb.stride();
+    let pixels = fb.pixels();
+    let row_bytes = width as usize * 4;
+
+    // 紧凑打包 RGBA 行（stride 可能包含填充，逐行拷贝）。
+    let mut raw = Vec::with_capacity(height as usize * row_bytes);
+    for row in 0..height as usize {
+        let start = row * stride;
+        raw.extend_from_slice(&pixels[start..start + row_bytes]);
+    }
+
+    emit(&json!({
+        "type": "frame",
+        "width": width,
+        "height": height,
+        "format": "rgba8",
+        "data": BASE64_STANDARD.encode(&raw),
+    }));
+}
+
 fn nls_from_str(s: Option<&str>) -> Nls {
     match s {
         Some("gbk") => Nls::Gbk,
         Some("utf8") => Nls::Utf8,
         _ => Nls::ShiftJis,
+    }
+}
+
+fn full_nls_from_str(s: Option<&str>) -> FullNls {
+    match s {
+        Some("gbk") => FullNls::GBK,
+        Some("utf8") => FullNls::UTF8,
+        _ => FullNls::ShiftJIS,
     }
 }
 
@@ -342,10 +380,23 @@ fn json_to_variant(value: &Value) -> Variant {
     }
 }
 
+/// 解析 `load` 请求里的 labels 对象（两种引擎共用）。
+fn collect_labels(req: &Value, labels: &mut HashMap<String, u32>) {
+    labels.clear();
+    if let Some(labels_obj) = req.get("labels").and_then(Value::as_object) {
+        for (name, addr) in labels_obj {
+            if let Some(a) = addr.as_u64() {
+                labels.insert(name.clone(), a as u32);
+            }
+        }
+    }
+}
+
 fn main() {
     let stdin = io::stdin();
     let mut host = CliHost::new();
     let mut runtime: Option<PortableRuntime> = None;
+    let mut full_host: Option<PreviewHost> = None;
     let mut labels: HashMap<String, u32> = HashMap::new();
 
     for line in stdin.lock().lines() {
@@ -375,55 +426,54 @@ fn main() {
             }
             "load" => {
                 let path = req.get("hcbPath").and_then(Value::as_str).unwrap_or("");
-                let nls = nls_from_str(req.get("nls").and_then(Value::as_str));
+                let engine = req
+                    .get("engine")
+                    .and_then(Value::as_str)
+                    .unwrap_or("portable");
                 match std::fs::read(path) {
-                    Ok(bytes) => match PortableRuntime::boot_from_hcb_bytes(bytes, nls) {
-                        Ok(mut rt) => {
-                            // 导出 HCB 保留底座 sysdesc launcher 以兼容原引擎；嵌入式预览必须
-                            // 显式跳到本次编译剧情函数，不能执行标题 / Logo 启动流程。
-                            if let Some(script_entry) =
-                                req.get("scriptEntry").and_then(Value::as_u64)
-                            {
-                                rt.jump_to(script_entry as u32);
-                            }
-                            let title = rt.title().to_string();
-                            let (w, h) = rt.screen_size();
-                            labels.clear();
-                            if let Some(labels_obj) = req.get("labels").and_then(Value::as_object) {
-                                for (name, addr) in labels_obj {
-                                    if let Some(a) = addr.as_u64() {
-                                        labels.insert(name.clone(), a as u32);
-                                    }
-                                }
-                            }
-                            runtime = Some(rt);
-                            emit(&json!({
-                                "type": "ready",
-                                "protocolVersion": 2,
-                                "title": title,
-                                "screenSize": [w, h],
-                            }));
+                    Ok(bytes) => {
+                        if engine == "full" {
+                            load_full(&req, bytes, &mut full_host, &mut runtime, &mut labels);
+                        } else {
+                            load_portable(
+                                &req,
+                                bytes,
+                                &mut runtime,
+                                &mut full_host,
+                                &mut labels,
+                            );
                         }
-                        Err(e) => emit_error(format!("boot failed: {:?}", e)),
-                    },
+                    }
                     Err(e) => emit_error(format!("read failed: {}", e)),
                 }
             }
             "jump" => {
-                let Some(rt) = runtime.as_mut() else {
-                    emit_error("not loaded".to_string());
-                    continue;
-                };
                 let label = req.get("label").and_then(Value::as_str).unwrap_or("");
-                match labels.get(label) {
+                let addr = labels.get(label).copied();
+                match addr {
                     Some(addr) => {
-                        rt.jump_to(*addr);
-                        match rt.tick(&mut host, 16) {
-                            Ok(_) => {
-                                emit_prims(&mut host, rt);
-                                emit_audio_events(rt);
+                        if let Some(fh) = full_host.as_mut() {
+                            fh.jump_to(addr);
+                            match fh.tick() {
+                                Ok(tick) => {
+                                    emit_frame(fh);
+                                    if tick.main_thread_exited {
+                                        emit(&json!({ "type": "done" }));
+                                    }
+                                }
+                                Err(e) => emit_error(format!("tick failed: {:?}", e)),
                             }
-                            Err(e) => emit_error(format!("tick failed: {:?}", e)),
+                        } else if let Some(rt) = runtime.as_mut() {
+                            rt.jump_to(addr);
+                            match rt.tick(&mut host, 16) {
+                                Ok(_) => {
+                                    emit_prims(&mut host, rt);
+                                    emit_audio_events(rt);
+                                }
+                                Err(e) => emit_error(format!("tick failed: {:?}", e)),
+                            }
+                        } else {
+                            emit_error("not loaded".to_string());
                         }
                     }
                     None => emit_error(format!("unknown label: {}", label)),
@@ -431,7 +481,7 @@ fn main() {
             }
             "get_g" => {
                 let Some(rt) = runtime.as_ref() else {
-                    emit_error("not loaded".to_string());
+                    emit_error("not loaded (get_g requires portable engine)".to_string());
                     continue;
                 };
                 let index = req.get("index").and_then(Value::as_u64).unwrap_or(0) as u16;
@@ -440,7 +490,7 @@ fn main() {
             }
             "set_g" => {
                 let Some(rt) = runtime.as_mut() else {
-                    emit_error("not loaded".to_string());
+                    emit_error("not loaded (set_g requires portable engine)".to_string());
                     continue;
                 };
                 let index = req.get("index").and_then(Value::as_u64).unwrap_or(0) as u16;
@@ -450,61 +500,106 @@ fn main() {
                 emit(&json!({ "type": "g", "index": index, "value": value }));
             }
             "advance" | "step" => {
-                let Some(rt) = runtime.as_mut() else {
-                    emit_error("not loaded".to_string());
-                    continue;
-                };
-                if op == "advance" {
-                    rt.handle_event(RfvpEvent::PointerUp {
-                        button: PointerButton::Left,
-                        x: 0,
-                        y: 0,
-                    });
-                }
-                match rt.tick(&mut host, 16) {
-                    Ok(report) => {
-                        emit_prims(&mut host, rt);
-                        emit_audio_events(rt);
-                        if report.main_thread_exited {
-                            emit(&json!({ "type": "done" }));
-                        }
+                if let Some(fh) = full_host.as_mut() {
+                    if op == "advance" {
+                        fh.handle_event(RfvpEvent::PointerUp {
+                            button: PointerButton::Left,
+                            x: 0,
+                            y: 0,
+                        });
                     }
-                    Err(e) => emit_error(format!("tick failed: {:?}", e)),
+                    match fh.tick() {
+                        Ok(tick) => {
+                            emit_frame(fh);
+                            if tick.main_thread_exited {
+                                emit(&json!({ "type": "done" }));
+                            }
+                        }
+                        Err(e) => emit_error(format!("tick failed: {:?}", e)),
+                    }
+                } else if let Some(rt) = runtime.as_mut() {
+                    if op == "advance" {
+                        rt.handle_event(RfvpEvent::PointerUp {
+                            button: PointerButton::Left,
+                            x: 0,
+                            y: 0,
+                        });
+                    }
+                    match rt.tick(&mut host, 16) {
+                        Ok(report) => {
+                            emit_prims(&mut host, rt);
+                            emit_audio_events(rt);
+                            if report.main_thread_exited {
+                                emit(&json!({ "type": "done" }));
+                            }
+                        }
+                        Err(e) => emit_error(format!("tick failed: {:?}", e)),
+                    }
+                } else {
+                    emit_error("not loaded".to_string());
                 }
             }
             "skip" => {
-                let Some(rt) = runtime.as_mut() else {
-                    emit_error("not loaded".to_string());
-                    continue;
-                };
-                let mut done = false;
-                for _ in 0..100_000 {
-                    rt.handle_event(RfvpEvent::PointerUp {
-                        button: PointerButton::Left,
-                        x: 0,
-                        y: 0,
-                    });
-                    match rt.tick(&mut host, 16) {
-                        Ok(report) => {
-                            if report.main_thread_exited {
-                                done = true;
+                if let Some(fh) = full_host.as_mut() {
+                    let mut done = false;
+                    for _ in 0..100_000 {
+                        fh.handle_event(RfvpEvent::PointerUp {
+                            button: PointerButton::Left,
+                            x: 0,
+                            y: 0,
+                        });
+                        match fh.tick() {
+                            Ok(tick) => {
+                                if tick.main_thread_exited {
+                                    done = true;
+                                    break;
+                                }
+                            }
+                            Err(e) => {
+                                emit_error(format!("tick failed: {:?}", e));
                                 break;
                             }
                         }
-                        Err(e) => {
-                            emit_error(format!("tick failed: {:?}", e));
-                            break;
+                    }
+                    emit_frame(fh);
+                    if done {
+                        emit(&json!({ "type": "done" }));
+                    }
+                } else if let Some(rt) = runtime.as_mut() {
+                    let mut done = false;
+                    for _ in 0..100_000 {
+                        rt.handle_event(RfvpEvent::PointerUp {
+                            button: PointerButton::Left,
+                            x: 0,
+                            y: 0,
+                        });
+                        match rt.tick(&mut host, 16) {
+                            Ok(report) => {
+                                if report.main_thread_exited {
+                                    done = true;
+                                    break;
+                                }
+                            }
+                            Err(e) => {
+                                emit_error(format!("tick failed: {:?}", e));
+                                break;
+                            }
                         }
                     }
-                }
-                emit_prims(&mut host, rt);
-                emit_audio_events(rt);
-                if done {
-                    emit(&json!({ "type": "done" }));
+                    emit_prims(&mut host, rt);
+                    emit_audio_events(rt);
+                    if done {
+                        emit(&json!({ "type": "done" }));
+                    }
+                } else {
+                    emit_error("not loaded".to_string());
                 }
             }
             "dump_prims" => {
-                if let Some(rt) = runtime.as_mut() {
+                if let Some(fh) = full_host.as_ref() {
+                    // full 引擎没有 prim，只有 frame；保持命令可 echo 最新帧。
+                    emit_frame(fh);
+                } else if let Some(rt) = runtime.as_mut() {
                     emit_prims(&mut host, rt);
                 } else {
                     emit_error("not loaded".to_string());
@@ -516,5 +611,69 @@ fn main() {
             }
             other => emit_error(format!("unknown op: {}", other)),
         }
+    }
+}
+
+fn load_full(
+    req: &Value,
+    bytes: Vec<u8>,
+    full_host: &mut Option<PreviewHost>,
+    runtime: &mut Option<PortableRuntime>,
+    labels: &mut HashMap<String, u32>,
+) {
+    if let Some(root) = req.get("resourceRoot").and_then(Value::as_str) {
+        PreviewHost::set_resource_root(root);
+    }
+    let script_entry = req
+        .get("scriptEntry")
+        .and_then(Value::as_u64)
+        .unwrap_or(0) as u32;
+    let nls = full_nls_from_str(req.get("nls").and_then(Value::as_str));
+    match PreviewHost::boot_from_bytes(bytes, nls, script_entry) {
+        Ok(fh) => {
+            let title = fh.title().to_string();
+            let (w, h) = (fh.width(), fh.height());
+            collect_labels(req, labels);
+            *runtime = None;
+            *full_host = Some(fh);
+            emit(&json!({
+                "type": "ready",
+                "protocolVersion": 2,
+                "title": title,
+                "screenSize": [w, h],
+            }));
+        }
+        Err(e) => emit_error(format!("boot failed: {:?}", e)),
+    }
+}
+
+fn load_portable(
+    req: &Value,
+    bytes: Vec<u8>,
+    runtime: &mut Option<PortableRuntime>,
+    full_host: &mut Option<PreviewHost>,
+    labels: &mut HashMap<String, u32>,
+) {
+    let nls = nls_from_str(req.get("nls").and_then(Value::as_str));
+    match PortableRuntime::boot_from_hcb_bytes(bytes, nls) {
+        Ok(mut rt) => {
+            // 导出 HCB 保留底座 sysdesc launcher 以兼容原引擎；嵌入式预览必须
+            // 显式跳到本次编译剧情函数，不能执行标题 / Logo 启动流程。
+            if let Some(script_entry) = req.get("scriptEntry").and_then(Value::as_u64) {
+                rt.jump_to(script_entry as u32);
+            }
+            let title = rt.title().to_string();
+            let (w, h) = rt.screen_size();
+            collect_labels(req, labels);
+            *full_host = None;
+            *runtime = Some(rt);
+            emit(&json!({
+                "type": "ready",
+                "protocolVersion": 2,
+                "title": title,
+                "screenSize": [w, h],
+            }));
+        }
+        Err(e) => emit_error(format!("boot failed: {:?}", e)),
     }
 }

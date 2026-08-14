@@ -1,5 +1,5 @@
 /**
- * 编辑器偏好：主题 / 默认 NLS / 预览比例 / 自动编译。
+ * 编辑器偏好：主题 / 默认 NLS / 预览比例 / 自动编译 / 资源归档路径。
  * 持久化到 localStorage（键名 hcb-editor:preferences）。
  */
 
@@ -12,6 +12,10 @@ export interface Preferences {
   readonly defaultNls: NlsPreference;
   readonly previewRatio: PreviewRatio;
   readonly autoCompile: boolean;
+  /** 真实引擎预览读取背景图归档（graph_bg.bin）的本地路径，空串表示未配置。 */
+  readonly graphBgBinPath: string;
+  /** 真实引擎预览读取立绘归档（graph_bs.bin）的本地路径，空串表示未配置。 */
+  readonly graphBsBinPath: string;
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -19,6 +23,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   defaultNls: 'gbk',
   previewRatio: '4:3',
   autoCompile: false,
+  graphBgBinPath: '',
+  graphBsBinPath: '',
 };
 
 const STORAGE_KEY = 'hcb-editor:preferences';

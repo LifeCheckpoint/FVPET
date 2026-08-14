@@ -185,6 +185,21 @@ export function registerFileDialogIpc(): void {
     }
     return { name: path.basename(filePath), path: filePath, text: fs.readFileSync(filePath, 'utf8') };
   });
+
+  ipcMain.handle('file-dialog:open-path', async (): Promise<{ name: string; path: string } | null> => {
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+    const result = win
+      ? await dialog.showOpenDialog(win, {
+          properties: ['openFile'],
+          filters: [{ name: '资源归档', extensions: ['bin'] }],
+        })
+      : { canceled: true, filePaths: [] };
+    const filePath = result.filePaths?.[0];
+    if (result.canceled || !filePath) {
+      return null;
+    }
+    return { name: path.basename(filePath), path: filePath };
+  });
 }
 
 /** 底座游戏二进制读取桥：Electron 主进程读本地文件，供渲染层 compileWithBase 用。 */

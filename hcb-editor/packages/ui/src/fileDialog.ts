@@ -7,6 +7,7 @@ export interface FileDialogBridge {
   saveTextFile(defaultName: string, content: string): Promise<string | null>;
   saveBinaryFile(defaultName: string, content: Uint8Array): Promise<string | null>;
   openTextFile(): Promise<{ name: string; text: string; path?: string } | null>;
+  openBinaryPath(): Promise<{ name: string; path: string } | null>;
 }
 
 declare global {
@@ -41,10 +42,17 @@ export async function saveBinaryFile(defaultName: string, content: Uint8Array): 
   downloadBlob(new Blob([buffer], { type: 'application/octet-stream' }), defaultName);
   return null;
 }
-
 export async function openTextFile(): Promise<{ name: string; text: string; path?: string } | null> {
   if (typeof window !== 'undefined' && window.fileDialog) {
     return window.fileDialog.openTextFile();
+  }
+  return null;
+}
+
+/** 选择一个本地二进制文件并仅返回其路径（用于 graph_bg.bin / graph_bs.bin 等归档配置）。 */
+export async function openBinaryPath(): Promise<{ name: string; path: string } | null> {
+  if (typeof window !== 'undefined' && window.fileDialog) {
+    return window.fileDialog.openBinaryPath();
   }
   return null;
 }

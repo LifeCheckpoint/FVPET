@@ -47,7 +47,14 @@ async function runCase(name: string, nodes: readonly IrNode[]): Promise<{
   };
   send({ op: 'handshake', protocolVersion: 2 });
   await wait(20);
-  send({ op: 'load', hcbPath, nls: 'gbk', scriptEntry: result.scriptEntry, labels: Object.fromEntries(result.labels) });
+  send({
+    op: 'load',
+    hcbPath,
+    nls: 'gbk',
+    engine: 'full',
+    scriptEntry: result.scriptEntry,
+    labels: Object.fromEntries(result.labels),
+  });
   await wait(40);
   for (let i = 0; i < 8; i += 1) {
     send({ op: 'advance' });
@@ -92,6 +99,19 @@ const cases: Readonly<Record<string, readonly IrNode[]>> = {
     { kind: 'label', name: 'worker' }, { kind: 'wait', ms: 1 },
     { kind: 'label', name: 'end' },
   ],
+  selset: [
+    {
+      kind: 'selset',
+      choices: [
+        { text: '选项一', label: 'opt1' },
+        { text: '选项二', label: 'opt2' },
+      ],
+      resultGlobal: 103,
+    },
+    { kind: 'label', name: 'opt1' }, { kind: 'wait', ms: 1 }, { kind: 'jump', target: 'end' },
+    { kind: 'label', name: 'opt2' }, { kind: 'wait', ms: 1 }, { kind: 'label', name: 'end' },
+  ],
+  msgset: [{ kind: 'msgset', position: 'normal' }],
 };
 
 afterAll(() => {

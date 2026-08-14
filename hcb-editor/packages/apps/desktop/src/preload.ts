@@ -58,6 +58,8 @@ const fileDialogApi = {
     ipcRenderer.invoke('file-dialog:save-binary', { defaultName, content }),
   openTextFile: (): Promise<{ name: string; text: string; path: string } | null> =>
     ipcRenderer.invoke('file-dialog:open-text'),
+  openBinaryPath: (): Promise<{ name: string; path: string } | null> =>
+    ipcRenderer.invoke('file-dialog:open-path'),
 };
 
 interface ProjectDirAsset {

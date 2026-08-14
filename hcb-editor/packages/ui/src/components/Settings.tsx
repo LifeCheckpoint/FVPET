@@ -1,13 +1,21 @@
 /**
- * 设置界面：统一管理编辑器偏好（主题 / 默认 NLS / 预览比例 / 自动编译）。
+ * 设置界面：统一管理编辑器偏好（主题 / 默认 NLS / 预览比例 / 自动编译 / 资源归档路径）。
  */
 
 import type { Preferences } from '../preferences/preferences.js';
+import { openBinaryPath } from '../fileDialog.js';
 
 export interface SettingsProps {
   readonly prefs: Preferences;
   readonly update: (patch: Partial<Preferences>) => void;
   readonly onClose: () => void;
+}
+
+async function pickBinPath(onPicked: (path: string) => void): Promise<void> {
+  const picked = await openBinaryPath();
+  if (picked) {
+    onPicked(picked.path);
+  }
 }
 
 export function Settings({ prefs, update, onClose }: SettingsProps) {
@@ -52,6 +60,46 @@ export function Settings({ prefs, update, onClose }: SettingsProps) {
             <span className="form-row__label">自动编译</span>
             <input type="checkbox" checked={prefs.autoCompile} onChange={(e) => update({ autoCompile: e.target.checked })} />
           </label>
+
+          <div className="form-row">
+            <span className="form-row__label">graph_bg.bin 归档</span>
+            <span className="form-row__path">
+              <input
+                className="form-row__control"
+                type="text"
+                value={prefs.graphBgBinPath}
+                placeholder="未配置——真实引擎预览需要此归档，请选择文件"
+                onChange={(e) => update({ graphBgBinPath: e.target.value })}
+              />
+              <button
+                type="button"
+                className="btn btn--secondary"
+                onClick={() => void pickBinPath((p) => update({ graphBgBinPath: p }))}
+              >
+                浏览
+              </button>
+            </span>
+          </div>
+
+          <div className="form-row">
+            <span className="form-row__label">graph_bs.bin 归档</span>
+            <span className="form-row__path">
+              <input
+                className="form-row__control"
+                type="text"
+                value={prefs.graphBsBinPath}
+                placeholder="未配置——真实引擎预览需要此归档，请选择文件"
+                onChange={(e) => update({ graphBsBinPath: e.target.value })}
+              />
+              <button
+                type="button"
+                className="btn btn--secondary"
+                onClick={() => void pickBinPath((p) => update({ graphBsBinPath: p }))}
+              >
+                浏览
+              </button>
+            </span>
+          </div>
         </div>
 
         <footer className="modal__footer">
