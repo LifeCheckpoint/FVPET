@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { IrHeader, irNodeFromJson, irNodeToJson } from '@hcb-editor/hcb/ir';
 import type { EditorState } from './state.js';
 
-export const PROJECT_FILE_SCHEMA_VERSION = 1 as const;
+export const PROJECT_FILE_SCHEMA_VERSION = 2 as const;
 
 const CharacterFaceSchema = z.object({
   face: z.number(),
@@ -81,7 +81,9 @@ const DocEdgeJson = z.object({
 });
 
 const ProjectFileJson = z.object({
-  schemaVersion: z.literal(1),
+  // v2：资源字段为相对路径引用（assets/<hash>.<ext>）；v1 为内联 data URL。
+  // 读取时两者都接受（资源字段统一为 string），v1 工程打开后首次保存自动落盘迁移。
+  schemaVersion: z.union([z.literal(1), z.literal(2)]),
   header: IrHeader,
   document: z.object({
     nodes: z.array(DocNodeJson),

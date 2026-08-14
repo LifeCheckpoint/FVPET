@@ -3,7 +3,7 @@
  * 纯函数：输入语义 IR + 编译上下文（底座 sysdesc + 资源表 + nls），输出 HCB 字节。
  */
 
-import { ByteWriter, serializeSysdesc, type HcbSysdesc, type Nls } from '@hcb-editor/hcb/core';
+import { ByteWriter, type HcbSysdesc, type Nls } from '@hcb-editor/hcb/core';
 import { decodeHcb, type HcbDecoded } from '@hcb-editor/hcb/decompile';
 import type { IrScript } from '@hcb-editor/hcb/ir';
 import type { GameTables, TemplateCtx } from '../templates/types.js';
@@ -38,6 +38,8 @@ export function compile(ir: IrScript, ctx: CompileCtx): Uint8Array {
 
 export interface CompileWithBaseResult {
   readonly bytes: Uint8Array;
+  /** 新编译剧情函数的绝对入口；与保留在 sysdesc 中的底座 launcher entryPoint 不同。 */
+  readonly scriptEntry: number;
   /** label → 绝对代码地址（供 label 断点 jump）。 */
   readonly labels: ReadonlyMap<string, number>;
 }
@@ -52,8 +54,30 @@ export function compileWithBase(
   ctx: CompileCtx,
   baseData: Uint8Array,
   extraFuncBytes: Uint8Array = new Uint8Array(0),
+  mainOffset: number,
+  baseNls: Nls,
 ): Uint8Array {
-  return compileWithBaseDetailed(ir, ctx, baseData, extraFuncBytes).bytes;
+  return compileWithBaseDetailed(ir, ctx, baseData, extraFuncBytes, mainOffset, baseNls).bytes;
+}
+
+/** 字节级替换 bytes 中所有等于 target 的小端 u32 值为 replacement（对齐无关，精确字节序列匹配）。 */
+function patchU32References(bytes: Uint8Array, target: number, replacement: number): void {
+  const t0 = target & 0xff;
+  const t1 = (target >>> 8) & 0xff;
+  const t2 = (target >>> 16) & 0xff;
+  const t3 = (target >>> 24) & 0xff;
+  const r0 = replacement & 0xff;
+  const r1 = (replacement >>> 8) & 0xff;
+  const r2 = (replacement >>> 16) & 0xff;
+  const r3 = (replacement >>> 24) & 0xff;
+  for (let i = 0; i + 3 < bytes.length; i += 1) {
+    if (bytes[i] === t0 && bytes[i + 1] === t1 && bytes[i + 2] === t2 && bytes[i + 3] === t3) {
+      bytes[i] = r0;
+      bytes[i + 1] = r1;
+      bytes[i + 2] = r2;
+      bytes[i + 3] = r3;
+    }
+  }
 }
 
 /** compileWithBase + 返回 label 绝对地址表。 */
@@ -62,16 +86,22 @@ export function compileWithBaseDetailed(
   ctx: CompileCtx,
   baseData: Uint8Array,
   extraFuncBytes: Uint8Array = new Uint8Array(0),
+  mainOffset: number,
+  baseNls: Nls,
 ): CompileWithBaseResult {
-  const base = decodeBaseCached(baseData, ctx.nls);
-  const baseCodeEnd = base.sysdesc.sysDescOffset;
-  const baseCode = baseData.subarray(4, baseCodeEnd);
+  const base = decodeBaseCached(baseData, baseNls);
+  // 库代码结束 = 剧情 main 插入点（对应 hcb_build.py 的 base_off）。
+  const libEnd = mainOffset;
+  const libCode = baseData.subarray(4, libEnd).slice();
 
   const templateCtx: TemplateCtx = { nls: ctx.nls, tables: ctx.tables };
   const blocks = lower(ir, templateCtx);
   const { items, labels: relativeLabels } = assembleFlatWithLabels(blocks, base.sysdesc, ctx.nls);
-  const scriptStart = baseCodeEnd + extraFuncBytes.length;
+  const scriptStart = libEnd + extraFuncBytes.length;
   const scriptCode = encodeFlatItemsCode(items, scriptStart, ctx.nls);
+
+  // 库代码区里对剧情 main（base_off）的引用改为新脚本起点（参考 hcb_build.py 的入口重定位）。
+  patchU32References(libCode, mainOffset, scriptStart);
 
   // 相对偏移（从 4 起算）→ 绝对地址：scriptStart + (rel - 4)。
   const labels = new Map<string, number>();
@@ -80,13 +110,13 @@ export function compileWithBaseDetailed(
   }
 
   const code = new ByteWriter();
-  code.bytes(baseCode).bytes(extraFuncBytes).bytes(scriptCode);
+  code.bytes(libCode).bytes(extraFuncBytes).bytes(scriptCode);
 
   const sysDescOffset = 4 + code.length;
-  const relocatedSysdesc: HcbSysdesc = { ...base.sysdesc, entryPoint: scriptStart };
-  const sysdescBytes = serializeSysdesc(relocatedSysdesc, ctx.nls);
+  // 尾部：原 sysdesc 表及其后（启动器 entryPoint、syscall 表、标题）原样保留，不再重序列化。
+  const tail = baseData.subarray(base.sysdesc.sysDescOffset);
 
   const out = new ByteWriter();
-  out.u32(sysDescOffset).bytes(code.toBytes()).bytes(sysdescBytes);
-  return { bytes: out.toBytes(), labels };
+  out.u32(sysDescOffset).bytes(code.toBytes()).bytes(tail);
+  return { bytes: out.toBytes(), scriptEntry: scriptStart, labels };
 }

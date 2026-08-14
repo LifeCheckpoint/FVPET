@@ -7,10 +7,12 @@ import {
   audioNode,
   bgsetNode,
   branchNode,
+  bsfadeNode,
   bssetNode,
   cgsetNode,
   commentNode,
   diaNode,
+  eyecatchNode,
   jumpNode,
   labelNode,
   msgsetNode,
@@ -18,6 +20,7 @@ import {
   speakNode,
   threadNode,
   waitNode,
+  whiteNode,
 } from '@hcb-editor/editor';
 import type { CreatableNodeKind } from '../theme/meta.js';
 
@@ -49,6 +52,12 @@ export function defaultNode(kind: CreatableNodeKind): IrNode {
       return waitNode(1000);
     case 'msgset':
       return msgsetNode('normal');
+    case 'eyecatch':
+      return eyecatchNode();
+    case 'bsfade':
+      return bsfadeNode();
+    case 'white':
+      return whiteNode();
     case 'comment':
       return commentNode('');
   }

@@ -194,10 +194,21 @@ function lineText(node: DocNode, document: EditorDocument): string[] {
       return [`cg ${n.name} slot ${n.slot}`];
     case 'bsset':
       return [
-        `bs ${n.character} pose ${n.pose} costume ${n.costume} face ${n.expression} layer ${n.layer}`,
+        `bs ${n.character} pose ${n.pose} costume ${n.costume} face ${n.expression} loc ${n.loc} z ${n.z} layer ${n.layer}`,
       ];
-    case 'audio':
-      return [`${n.type} ${n.channelOrNum}`];
+    case 'audio': {
+      let text = `${n.type} ${n.channelOrNum}`;
+      if (n.action === 'stop') {
+        text += ' stop';
+      }
+      if (n.loop) {
+        text += ' loop';
+      }
+      if (n.time !== undefined) {
+        text += ` ${n.time}`;
+      }
+      return [text];
+    }
     case 'selset':
       // selset 的完整块渲染在 projectScript 中单独处理，此处仅保证类型穷尽。
       return ['sel:'];
@@ -220,6 +231,12 @@ function lineText(node: DocNode, document: EditorDocument): string[] {
       return [`wait ${n.ms}`];
     case 'msgset':
       return [`msg ${n.position}`];
+    case 'eyecatch':
+      return ['eyecatch'];
+    case 'bsfade':
+      return ['bsfade'];
+    case 'white':
+      return ['white'];
     case 'raw':
       return [`# raw（未识别演出块 · ${n.bytes.byteLength} 字节）`];
     case 'comment':

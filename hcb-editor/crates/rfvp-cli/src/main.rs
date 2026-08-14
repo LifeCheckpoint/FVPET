@@ -9,9 +9,9 @@ use std::io::{self, BufRead, Write};
 
 use rfvp::host_api::{
     AudioParams, AudioStreamDesc, AudioStreamId, ColorRgba, DrawSolidCommand, DrawSpriteCommand,
-    EncodedAudioKind, PointerButton, RfvpAudio, RfvpClock, RfvpError, RfvpEvent, RfvpFile,
-    RfvpFileInfo, RfvpFileSystem, RfvpHost, RfvpLogLevel, RfvpRenderer, RfvpResult, TextureDesc,
-    TextureId, TextureRect,
+    EncodedAudioKind, PointerButton, RfvpAudio, RfvpClock, RfvpEvent, RfvpFile, RfvpFileInfo,
+    RfvpFileSystem, RfvpHost, RfvpLogLevel, RfvpRenderer, RfvpResult, TextureDesc, TextureId,
+    TextureRect,
 };
 use rfvp::portable::{Nls, PortableRuntime, Variant};
 use serde_json::{json, Value};
@@ -45,12 +45,30 @@ struct CliFs;
 impl RfvpFileSystem for CliFs {
     type File = CliFile;
 
-    fn open(&mut self, _path: &str) -> RfvpResult<Self::File> {
-        Err(RfvpError::NotFound)
+    /// 编辑器预览没有游戏资源目录：任何资源路径都返回空文件（而非 NotFound），
+    /// 让 GraphLoad / SoundLoad 等演出资源加载不再中断 VM。
+    /// 预览渲染只按 prim 矩形与颜色绘制，资源字节内容不参与绘制。
+    fn open(&mut self, path: &str) -> RfvpResult<Self::File> {
+        eprintln!("[rfvp-cli] fs.open: {}", path);
+        Ok(CliFile { _data: Vec::new() })
     }
 
-    fn metadata(&mut self, _path: &str) -> RfvpResult<RfvpFileInfo> {
-        Err(RfvpError::NotFound)
+    fn metadata(&mut self, path: &str) -> RfvpResult<RfvpFileInfo> {
+        eprintln!("[rfvp-cli] fs.metadata: {}", path);
+        Ok(RfvpFileInfo::file(0))
+    }
+
+    fn enumerate_by_extension(
+        &mut self,
+        root: &str,
+        extension_without_dot: &str,
+        _visitor: &mut dyn FnMut(&str, RfvpFileInfo) -> RfvpResult<()>,
+    ) -> RfvpResult<()> {
+        eprintln!(
+            "[rfvp-cli] fs.enumerate: {} *.{}",
+            root, extension_without_dot
+        );
+        Ok(())
     }
 }
 
@@ -345,18 +363,29 @@ fn main() {
                 continue;
             }
         };
-        let op = req.get("op").and_then(Value::as_str).unwrap_or("").to_string();
+        let op = req
+            .get("op")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
 
         match op.as_str() {
             "handshake" => {
-                emit(&json!({ "type": "ready", "protocolVersion": 1 }));
+                emit(&json!({ "type": "ready", "protocolVersion": 2 }));
             }
             "load" => {
                 let path = req.get("hcbPath").and_then(Value::as_str).unwrap_or("");
                 let nls = nls_from_str(req.get("nls").and_then(Value::as_str));
                 match std::fs::read(path) {
                     Ok(bytes) => match PortableRuntime::boot_from_hcb_bytes(bytes, nls) {
-                        Ok(rt) => {
+                        Ok(mut rt) => {
+                            // 导出 HCB 保留底座 sysdesc launcher 以兼容原引擎；嵌入式预览必须
+                            // 显式跳到本次编译剧情函数，不能执行标题 / Logo 启动流程。
+                            if let Some(script_entry) =
+                                req.get("scriptEntry").and_then(Value::as_u64)
+                            {
+                                rt.jump_to(script_entry as u32);
+                            }
                             let title = rt.title().to_string();
                             let (w, h) = rt.screen_size();
                             labels.clear();
@@ -370,7 +399,7 @@ fn main() {
                             runtime = Some(rt);
                             emit(&json!({
                                 "type": "ready",
-                                "protocolVersion": 1,
+                                "protocolVersion": 2,
                                 "title": title,
                                 "screenSize": [w, h],
                             }));

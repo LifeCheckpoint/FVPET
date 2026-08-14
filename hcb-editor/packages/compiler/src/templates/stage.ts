@@ -12,6 +12,9 @@ type ThreadNode = Extract<IrNode, { kind: 'thread' }>;
 type WaitNode = Extract<IrNode, { kind: 'wait' }>;
 type MsgsetNode = Extract<IrNode, { kind: 'msgset' }>;
 type CgsetNode = Extract<IrNode, { kind: 'cgset' }>;
+type EyecatchNode = Extract<IrNode, { kind: 'eyecatch' }>;
+type BsfadeNode = Extract<IrNode, { kind: 'bsfade' }>;
+type WhiteNode = Extract<IrNode, { kind: 'white' }>;
 
 const PUSH: AsmPattern = {
   anyOf: [
@@ -87,18 +90,69 @@ const STAGE_SYSCALLS = [
 
 function audioAsm(node: AudioNode): AsmInstruction[] {
   if (node.type === 'bgm') {
+    if (node.action === 'stop') {
+      // bgmstop：push_nil + call f_00040695（hcb_build.py bgmstop）
+      return [
+        { op: 'push_nil' },
+        { op: 'call', target: 'f_00040695' },
+      ];
+    }
+    // bgmset：编号 + 4 nil + call f_00040552。旧实现以 AudioLoad(channel,nil)
+    // 开头会先卸载通道，虽然无栈错误，却不会加载底座中的实际 BGM 资源。
     return [
       { op: 'push_i8', value: node.channelOrNum },
       { op: 'push_nil' },
-      { op: 'syscall', name: 'AudioLoad' },
-      { op: 'push_i8', value: node.channelOrNum },
-      ...(node.loop ? ([{ op: 'push_true' }] as AsmInstruction[]) : ([{ op: 'push_nil' }] as AsmInstruction[])),
-      { op: 'syscall', name: 'AudioPlay' },
+      { op: 'push_nil' },
+      { op: 'push_nil' },
+      { op: 'push_nil' },
+      { op: 'call', target: 'f_00040552' },
     ];
   }
+  if (node.type === 'se') {
+    if (node.action === 'stop') {
+      // se end：push_i16 num, push_i16 time, push_i8 0, push_nil, push_nil, call f_0003fc08
+      return [
+        { op: 'push_i16', value: node.channelOrNum },
+        { op: 'push_i16', value: node.time ?? 0 },
+        { op: 'push_i8', value: 0 },
+        { op: 'push_nil' },
+        { op: 'push_nil' },
+        { op: 'call', target: 'f_0003fc08' },
+      ];
+    }
+    if (node.loop) {
+      // se loop：push_i16 num, push_i8 1, push_nil, push_nil, push_i16 time, call f_0003fc08
+      return [
+        { op: 'push_i16', value: node.channelOrNum },
+        { op: 'push_i8', value: 1 },
+        { op: 'push_nil' },
+        { op: 'push_nil' },
+        { op: 'push_i16', value: node.time ?? 0 },
+        { op: 'call', target: 'f_0003fc08' },
+      ];
+    }
+    // 普通播放同样必须经过 5 参数 SE 包装函数；SoundPlay syscall 本身需要 3 参数。
+    return [
+      { op: 'push_i16', value: node.channelOrNum },
+      { op: 'push_nil' },
+      { op: 'push_nil' },
+      { op: 'push_nil' },
+      { op: 'push_nil' },
+      { op: 'call', target: 'f_0003fc08' },
+    ];
+  }
+  if (node.action === 'stop') {
+    return [
+      { op: 'push_i16', value: node.channelOrNum },
+      { op: 'push_i16', value: node.time ?? 0 },
+      { op: 'syscall', name: 'AudioStop' },
+    ];
+  }
+  // AudioPlay 的 sysdesc 参数数为 2：通道 + repeat。
   return [
     { op: 'push_i16', value: node.channelOrNum },
-    { op: 'syscall', name: node.type === 'se' ? 'SoundPlay' : 'AudioPlay' },
+    ...(node.loop ? ([{ op: 'push_true' }] as AsmInstruction[]) : ([{ op: 'push_nil' }] as AsmInstruction[])),
+    { op: 'syscall', name: 'AudioPlay' },
   ];
 }
 
@@ -276,36 +330,66 @@ export const controlTemplate: Template<never> = {
   },
 };
 
-/** Sakura moyu CG 显示函数（push_i16 槽位 + push_string 资源名 + push_i8×2 + call）。 */
-const CGSET_FN = 0x000373a5;
+function signedI16(value: number): AsmInstruction[] {
+  const integer = Math.trunc(value);
+  if (integer >= 0) {
+    return [{ op: 'push_i16', value: integer }];
+  }
+  return [{ op: 'push_i16', value: Math.abs(integer) }, { op: 'neg' }];
+}
 
+/**
+ * Sakura moyu 的预处理 base.chb 为每个已加载 CG 提供一个 6 参数专属函数。
+ * 原版 Sakura 分析得到的共享 0x373a5 在 base.chb 中是数据字节 0x5f，不是函数。
+ */
 export const cgsetTemplate: Template<CgsetNode> = {
   id: 'fvp.cgset',
-  signature: [
-    { mnemonic: 'push_i16' },
-    { mnemonic: 'push_string' },
-    { mnemonic: 'push_i8' },
-    { mnemonic: 'push_i8' },
-    { callToAny: [CGSET_FN] },
-  ],
+  signature: [{ repeat: { pattern: PUSH, min: 6, max: 10 } }, { call: true }],
   slots: {
     name: { kind: 'string', doc: 'CG 资源名（大写）' },
-    slot: { kind: 'i16', doc: '图元槽位' },
-    mode: { kind: 'i8', doc: '显示模式' },
-    flag: { kind: 'i8', doc: '标志' },
+    x: { kind: 'i16', doc: '可选 x 坐标' },
+    y: { kind: 'i16', doc: '可选 y 坐标' },
+    scale: { kind: 'i16', doc: '可选缩放，1 为原始比例' },
+    time: { kind: 'i16', doc: '转场时间（毫秒）' },
   },
-  instantiate(node, _ctx): AsmBlock[] {
-    return [
-      {
-        instructions: [
-          { op: 'push_i16', value: node.slot },
-          { op: 'push_string', text: node.name },
-          { op: 'push_i8', value: node.mode },
-          { op: 'push_i8', value: node.flag },
-          { op: 'call', target: 'f_000373a5' },
-        ],
-      },
-    ];
+  instantiate(node, ctx): AsmBlock[] {
+    const normalized = node.name.toUpperCase();
+    const cg = ctx.tables.cgs?.[normalized];
+    const hasCustomTransform = node.x !== undefined || node.y !== undefined || node.scale !== undefined;
+    const values: AsmInstruction[][] = hasCustomTransform
+      ? [
+          [{ op: 'push_i8', value: 0 }],
+          signedI16(node.x ?? 0),
+          signedI16(node.y ?? 0),
+          signedI16(3000 - Math.round((node.scale ?? 1) * 1000)),
+          [{ op: 'push_nil' }],
+        ]
+      : Array.from({ length: 5 }, () => [{ op: 'push_nil' as const }]);
+    const time = signedI16(node.time ?? 0);
+    const instructions: AsmInstruction[] = cg
+      ? [
+          ...values.flat(),
+          ...time,
+          { op: 'call', target: `f_${cg.fn.toString(16).padStart(8, '0')}` },
+        ]
+      : [
+          // hcb_build.py::cgload 的 6 参数包装函数体内联版：允许 graph_vis/vish.bin
+          // 中未被 cg_loaded.txt 预载的新 CG，无需生成额外函数定义。
+          { op: 'call', target: 'f_000051ac' },
+          { op: 'push_string', text: normalized },
+          ...values[0]!,
+          { op: 'push_i8', value: 1 },
+          { op: 'push_nil' },
+          ...values.slice(1).flat(),
+          { op: 'push_nil' },
+          { op: 'push_nil' },
+          { op: 'call', target: 'f_0003c86a' },
+          { op: 'push_nil' },
+          { op: 'push_nil' },
+          ...time,
+          { op: 'call', target: 'f_000051d3' },
+        ];
+    return [{ instructions }];
   },
 };
 
@@ -318,5 +402,75 @@ export const inputTemplate: Template<never> = {
   slots: {},
   instantiate(_node: never, _ctx: TemplateCtx): AsmBlock[] {
     throw new Error('fvp.input（输入/线程退出）仅用于反编译识别');
+  },
+};
+
+/** 转场（eyecatch）：5×push_nil + call f_00036e7b（hcb_build.py eyecatch）。 */
+export const eyecatchTemplate: Template<EyecatchNode> = {
+  id: 'fvp.eyecatch',
+  signature: [{ repeat: { pattern: PUSH, min: 0, max: 5 } }, { callTo: 0x00036e7b }],
+  slots: {},
+  instantiate(): AsmBlock[] {
+    return [
+      {
+        instructions: [
+          { op: 'push_nil' },
+          { op: 'push_nil' },
+          { op: 'push_nil' },
+          { op: 'push_nil' },
+          { op: 'push_nil' },
+          { op: 'call', target: 'f_00036e7b' },
+        ],
+      },
+    ];
+  },
+};
+
+/** 消除当前立绘（bsfade）：2×push_nil + call f_0000baa9（hcb_build.py bsfade）。 */
+export const bsfadeTemplate: Template<BsfadeNode> = {
+  id: 'fvp.bsfade',
+  signature: [{ repeat: { pattern: PUSH, min: 0, max: 2 } }, { callTo: 0x0000baa9 }],
+  slots: {},
+  instantiate(): AsmBlock[] {
+    return [
+      {
+        instructions: [
+          { op: 'push_nil' },
+          { op: 'push_nil' },
+          { op: 'call', target: 'f_0000baa9' },
+        ],
+      },
+    ];
+  },
+};
+
+/** 背景调白（white）：call f_00005467 + push_i8 0 + push_i16 1000 + push_nil×8 + call f_0004115a。 */
+export const whiteTemplate: Template<WhiteNode> = {
+  id: 'fvp.white',
+  signature: [
+    { callTo: 0x00005467 },
+    { repeat: { pattern: PUSH, min: 0, max: 10 } },
+    { callTo: 0x0004115a },
+  ],
+  slots: {},
+  instantiate(): AsmBlock[] {
+    return [
+      {
+        instructions: [
+          { op: 'call', target: 'f_00005467' },
+          { op: 'push_i8', value: 0 },
+          { op: 'push_i16', value: 1000 },
+          { op: 'push_nil' },
+          { op: 'push_nil' },
+          { op: 'push_nil' },
+          { op: 'push_nil' },
+          { op: 'push_nil' },
+          { op: 'push_nil' },
+          { op: 'push_nil' },
+          { op: 'push_nil' },
+          { op: 'call', target: 'f_0004115a' },
+        ],
+      },
+    ];
   },
 };

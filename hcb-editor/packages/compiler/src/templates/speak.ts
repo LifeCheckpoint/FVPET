@@ -16,8 +16,8 @@ import type { AsmBlock, AsmInstruction, AsmPattern, Template, TemplateCtx } from
 type DiaNode = Extract<IrNode, { kind: 'dia' }>;
 type SpeakNode = Extract<IrNode, { kind: 'speak' }>;
 
-/** Sakura 对话文本函数（f_0004CEFD，调用 56865 次）。 */
-const DIA_FN = 0x0004cefd;
+/** Sakura 旁白文本函数（f_00038347；与 hcb_build.py 的 diaset 一致）。 */
+const DIA_FN = 0x00038347;
 
 /** SPEAK 函数族：数据驱动自底座角色表（每角色的 speakFn）。 */
 const SPEAK_FNS: readonly number[] = Object.values(sakuraMoyuBaseData.characters).map((c) => c.speakFn);
@@ -44,18 +44,36 @@ function diaAsm(text: string): AsmInstruction[] {
   ];
 }
 
-function speakCallAsm(speaker: string, ctx: TemplateCtx): AsmInstruction[] {
-  const char = ctx.tables.characters[speaker];
+function speakCallAsm(node: SpeakNode, ctx: TemplateCtx): AsmInstruction[] {
+  const char = ctx.tables.characters[node.speaker];
   if (!char || char.speakFn === undefined) {
-    throw new Error(`unknown speaker: ${speaker}`);
+    throw new Error(`unknown speaker: ${node.speaker}`);
   }
-  // 本名 + 无语音的简化调用（别名/？？？/语音变体后续按 IR 字段展开）
-  return [
-    { op: 'push_nil' },
-    { op: 'push_nil' },
-    { op: 'push_nil' },
-    { op: 'call', target: `f_${char.speakFn.toString(16).padStart(8, '0')}` },
-  ];
+  const ins: AsmInstruction[] = [];
+  // 语音：有 → push_i32；无 → push_nil（hcb_build.py chaset 第一入参）。
+  if (node.voice !== undefined) {
+    ins.push({ op: 'push_i32', value: node.voice });
+  } else {
+    ins.push({ op: 'push_nil' });
+  }
+  // 名义（别名）：预设别名编号 → push_i8；？？？ → push_i8 1 + neg（-1）；否则本名 push_nil。
+  if (node.alias !== undefined && node.alias !== '') {
+    if (node.alias === '？？？') {
+      ins.push({ op: 'push_i8', value: 1 }, { op: 'neg' });
+    } else {
+      const aliasNum = char.alias?.[node.alias];
+      ins.push(aliasNum !== undefined ? { op: 'push_i8', value: aliasNum } : { op: 'push_nil' });
+    }
+  } else {
+    ins.push({ op: 'push_nil' });
+  }
+  // 尾巴 nil：大雅 3 个，普通角色 1 个（hcb_build.py chaset 后续入参）。
+  const extra = char.extraArgs ?? 1;
+  for (let i = 0; i < extra; i += 1) {
+    ins.push({ op: 'push_nil' });
+  }
+  ins.push({ op: 'call', target: `f_${char.speakFn.toString(16).padStart(8, '0')}` });
+  return ins;
 }
 
 export const diaTemplate: Template<DiaNode> = {
@@ -80,7 +98,7 @@ export const speakTemplate: Template<SpeakNode> = {
   instantiate(node, ctx): AsmBlock[] {
     // speak = 名栏调用 + 文本调用
     return [
-      { instructions: speakCallAsm(node.speaker, ctx) },
+      { instructions: speakCallAsm(node, ctx) },
       { instructions: diaAsm(node.text) },
     ];
   },

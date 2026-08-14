@@ -7,14 +7,17 @@ import type { CondExpr, IrScript } from '@hcb-editor/hcb/ir';
 import {
   audioTemplate,
   bgsetTemplate,
+  bsfadeTemplate,
   bssetTemplate,
   cgsetTemplate,
   diaTemplate,
+  eyecatchTemplate,
   msgsetTemplate,
   selsetTemplate,
   speakTemplate,
   threadTemplate,
   waitTemplate,
+  whiteTemplate,
 } from '../templates/index.js';
 import type { AsmBlock, AsmInstruction, TemplateCtx } from '../templates/types.js';
 
@@ -94,6 +97,15 @@ export function lower(ir: IrScript, ctx: TemplateCtx): AsmBlock[] {
         break;
       case 'msgset':
         blocks.push(...msgsetTemplate.instantiate(node, ctx));
+        break;
+      case 'eyecatch':
+        blocks.push(...eyecatchTemplate.instantiate(node, ctx));
+        break;
+      case 'bsfade':
+        blocks.push(...bsfadeTemplate.instantiate(node, ctx));
+        break;
+      case 'white':
+        blocks.push(...whiteTemplate.instantiate(node, ctx));
         break;
       case 'branch':
         blocks.push({

@@ -6,12 +6,13 @@
 
 import type { HcbSysdesc, Nls, SyscallEntry } from '@hcb-editor/hcb/core';
 import type { IrScript } from '@hcb-editor/hcb/ir';
-import type { GameTables, TemplateCtx } from '../templates/types.js';
+import type { BackgroundEntry, CharacterEntry, CgEntry, GameTables, TemplateCtx } from '../templates/types.js';
 import { compileWithBaseDetailed } from '../passes/compile.js';
 import { assembleFlatWithLabels } from '../passes/assemble.js';
 import { encodeFlatItems } from '../passes/encode.js';
 import { lower } from '../passes/lower.js';
 import { sakuraMoyuBaseData } from './data/sakura-moyu.js';
+import { sakuraMoyuBackgrounds, sakuraMoyuCgs } from './data/sakura-moyu-resources.js';
 import { generateSpeakFunctions } from './function-gen.js';
 
 interface BaseSyscallData {
@@ -32,13 +33,38 @@ interface BaseSysdescData {
 
 interface BaseGameData {
   readonly sysdesc: BaseSysdescData;
-  readonly characters: Readonly<Record<string, { readonly speakFn: number }>>;
-  readonly backgrounds: Readonly<Record<string, { readonly fn: number; readonly number: number }>>;
+  readonly characters: Readonly<Record<string, CharacterEntry>>;
+  readonly backgrounds: Readonly<Record<string, BackgroundEntry>>;
+  readonly cgs: Readonly<Record<string, CgEntry>>;
   readonly globals: Readonly<Record<string, number>>;
+  /** 剧情 main 脚本插入点（库代码结束），对应 hcb_build.py 的 base_off。 */
+  readonly mainOffset: number;
+  /** 底座库二进制自身的字符串编码（base.chb 为 gbk，Sakura.hcb 为 sjis）。 */
+  readonly nls: Nls;
 }
 
+/**
+ * 预处理 base.chb 与原版 Sakura.hcb 的资源函数地址空间不同。
+ * 这里只注册经 base.chb 字节及 hcb_build.py/cg_loaded.txt 双重核对过的专属函数；
+ * 旧提取数据中的共享 0x37421/0x373a5 地址绝不能用于预处理底座。
+ */
+const SAKURA_MOYU_BACKGROUNDS: Readonly<Record<string, BackgroundEntry>> = Object.fromEntries(
+  Object.entries(sakuraMoyuBackgrounds).flatMap(([id, value]) => {
+    const entry: BackgroundEntry = { fn: value.fn, number: value.number, args: value.args };
+    return [[`bg_${id}`, entry], [value.name, entry]] as const;
+  }),
+);
+
+const SAKURA_MOYU_CGS: Readonly<Record<string, CgEntry>> = Object.fromEntries(
+  Object.entries(sakuraMoyuCgs).map(([name, fn]) => [name, { fn }]),
+);
+
 const BASES: Readonly<Record<string, BaseGameData>> = {
-  'sakura-moyu': sakuraMoyuBaseData,
+  'sakura-moyu': {
+    ...sakuraMoyuBaseData,
+    backgrounds: SAKURA_MOYU_BACKGROUNDS,
+    cgs: SAKURA_MOYU_CGS,
+  },
 };
 
 function toSysdesc(data: BaseSysdescData): HcbSysdesc {
@@ -71,6 +97,8 @@ function toSysdesc(data: BaseSysdescData): HcbSysdesc {
 export interface LoadedBase {
   readonly sysdesc: HcbSysdesc;
   readonly tables: GameTables;
+  readonly mainOffset: number;
+  readonly nls: Nls;
 }
 
 export function loadBaseGame(game: string): LoadedBase {
@@ -83,8 +111,11 @@ export function loadBaseGame(game: string): LoadedBase {
     tables: {
       characters: data.characters,
       backgrounds: data.backgrounds,
+      cgs: data.cgs,
       globals: data.globals,
     },
+    mainOffset: data.mainOffset,
+    nls: data.nls,
   };
 }
 /** 已注册的底座游戏 id 列表（供 UI 选择）。 */
@@ -102,22 +133,33 @@ export function availableBaseBackgrounds(game: string): string[] {
   return Object.keys(loadBaseGame(game).tables.backgrounds);
 }
 
+/** 底座游戏已预载 CG 名（供属性面板校验与下拉）。 */
+export function availableBaseCgs(game: string): string[] {
+  return Object.keys(loadBaseGame(game).tables.cgs ?? {});
+}
+
 export interface CompileProjectOptions {
   /** 底座库二进制（完整原版 HCB）。提供时走 compileWithBase，产物可独立运行。 */
   baseData?: Uint8Array;
   /** 新增角色名（资源表中 speakFn 为 null 者），由 emitFunctionDef 生成 SPEAK 函数体。 */
   extraCharacters?: readonly string[];
-  /** 新增背景（资源表中 bgFn 为 null 者），共享加载函数，仅分配资源编号。 */
-  extraBackgrounds?: readonly { readonly name: string; readonly number?: number }[];
+  /**
+   * 工程背景别名/元数据。仅当编号或 fn 能匹配底座真实专属函数时注册；
+   * 未知背景保持未知并在 bgset 编译时报错，绝不回退到原版 Sakura 的无效共享地址。
+   */
+  extraBackgrounds?: readonly {
+    readonly name: string;
+    readonly number?: number;
+    readonly fn?: number | null;
+  }[];
   /** 角色名 → 立绘编号（chaNum）映射，供 bsset 编译真实立绘编号。 */
   characterChaNums?: Readonly<Record<string, number>>;
 }
 
-/** Sakura moyu 背景/立绘资源加载共享函数（无专用函数体时回退值）。 */
-const SHARED_BG_LOADER = 0x00037421;
-
 export interface CompileProjectResult {
   readonly bytes: Uint8Array;
+  /** 新编译剧情函数的绝对入口；底座模式下不等于保留的 sysdesc launcher entryPoint。 */
+  readonly scriptEntry: number;
   /** label → 绝对代码地址（供 label 断点 jump）。 */
   readonly labels: ReadonlyMap<string, number>;
 }
@@ -133,22 +175,24 @@ export function compileProject(ir: IrScript, nls: Nls, opts: CompileProjectOptio
 
 /** compileProject + 返回 label 绝对地址表（供真实引擎 label 断点 jump）。 */
 export function compileProjectDetailed(ir: IrScript, nls: Nls, opts: CompileProjectOptions = {}): CompileProjectResult {
-  const { sysdesc, tables } = loadBaseGame(ir.header.game);
+  const { sysdesc, tables, mainOffset, nls: baseNls } = loadBaseGame(ir.header.game);
 
   let characters = tables.characters;
   let backgrounds = tables.backgrounds;
 
-  // 新增背景：共享加载函数，仅分配资源编号。
+  // 工程背景别名：只允许指向当前预处理底座中已验证的专属函数。
   if (opts.extraBackgrounds && opts.extraBackgrounds.length > 0) {
-    const sharedFn = Object.values(backgrounds)[0]?.fn ?? SHARED_BG_LOADER;
-    const maxNumber = Math.max(0, ...Object.values(backgrounds).map((b) => b.number ?? 0));
     const merged = { ...backgrounds };
-    let next = maxNumber;
+    const canonical = Object.values(backgrounds);
     for (const bg of opts.extraBackgrounds) {
-      const given = bg.number !== undefined && bg.number > 0 ? bg.number : undefined;
-      const number = given ?? next + 1;
-      merged[bg.name] = { fn: sharedFn, number };
-      next = number;
+      const byNumber = bg.number !== undefined ? backgrounds[`bg_${bg.number}`] : undefined;
+      const byFunction = bg.fn !== undefined && bg.fn !== null
+        ? canonical.find((entry) => entry.fn === bg.fn)
+        : undefined;
+      const resolved = byNumber ?? byFunction;
+      if (resolved) {
+        merged[bg.name] = resolved;
+      }
     }
     backgrounds = merged;
   }
@@ -170,7 +214,8 @@ export function compileProjectDetailed(ir: IrScript, nls: Nls, opts: CompileProj
       templateName,
       opts.extraCharacters,
       Object.keys(tables.characters).length,
-      nls,
+      baseNls,
+      mainOffset,
     );
     extraFuncBytes = bytes;
     const merged = { ...characters };
@@ -189,15 +234,15 @@ export function compileProjectDetailed(ir: IrScript, nls: Nls, opts: CompileProj
     characters = merged;
   }
 
-  const ctx = { sysdesc, nls, tables: { characters, backgrounds, globals: tables.globals } };
+  const ctx = { sysdesc, nls, tables: { characters, backgrounds, cgs: tables.cgs ?? {}, globals: tables.globals } };
 
   if (opts.baseData) {
-    return compileWithBaseDetailed(ir, ctx, opts.baseData, extraFuncBytes);
+    return compileWithBaseDetailed(ir, ctx, opts.baseData, extraFuncBytes, mainOffset, baseNls);
   }
 
   // 脚本-only：代码区起点为 4，label 相对偏移即绝对地址。
   const templateCtx: TemplateCtx = { nls, tables: ctx.tables };
   const blocks = lower(ir, templateCtx);
   const { items, labels } = assembleFlatWithLabels(blocks, sysdesc, nls);
-  return { bytes: encodeFlatItems(items, sysdesc, nls), labels };
+  return { bytes: encodeFlatItems(items, sysdesc, nls), scriptEntry: 4, labels };
 }

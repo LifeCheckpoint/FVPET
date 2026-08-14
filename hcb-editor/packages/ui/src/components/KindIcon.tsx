@@ -102,6 +102,27 @@ export function KindIcon({ kind }: { readonly kind: IrNode['kind'] }) {
           <path d="M5 9.5V6.5h6V9.5" />
         </svg>
       );
+    case 'eyecatch':
+      return (
+        <svg {...iconProps}>
+          <rect x="2.5" y="2.5" width="11" height="11" rx="1" />
+          <rect x="5" y="5" width="6" height="6" rx="0.5" />
+        </svg>
+      );
+    case 'bsfade':
+      return (
+        <svg {...iconProps}>
+          <circle cx="8" cy="4.5" r="2" />
+          <path d="M4 13.5c0-2.5 1.8-4 4-4s4 1.5 4 4" />
+          <path d="M11.5 3.5l3 3M14.5 3.5l-3 3" />
+        </svg>
+      );
+    case 'white':
+      return (
+        <svg {...iconProps}>
+          <rect x="2.5" y="2.5" width="11" height="11" rx="1" fill="currentColor" stroke="none" />
+        </svg>
+      );
     case 'raw':
       return (
         <svg {...iconProps}>

@@ -51,6 +51,12 @@ export function summarizeNode(node: IrNode): NodeSummary {
       return { primary: `${node.ms} ms`, secondary: nodeKindLabel('wait') };
     case 'msgset':
       return { primary: node.position, secondary: nodeKindLabel('msgset') };
+    case 'eyecatch':
+      return { primary: 'eyecatch', secondary: nodeKindLabel('eyecatch') };
+    case 'bsfade':
+      return { primary: 'bsfade', secondary: nodeKindLabel('bsfade') };
+    case 'white':
+      return { primary: 'white', secondary: nodeKindLabel('white') };
     case 'raw':
       return { primary: `${node.bytes.byteLength} 字节`, secondary: nodeKindLabel('raw') };
     case 'comment':

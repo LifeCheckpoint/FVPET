@@ -1,10 +1,13 @@
 /**
- * 预览面板：Pixi 自绘 prim + 文本覆盖 + G[] 面板 + 点击推进。
+ * 预览面板：Pixi 自绘 prim + 文本覆盖 + 点击推进。
  *
- * 文本队列由编辑器投影（buildPreviewScript）提供；prim 有两级来源：
- *   1. 真实引擎（Electron 下经 window.rfvp 桥 → rfvp-cli）执行编译产物，
- *      回放 draw_solid 矩形作为 prim；缺桥 / 编译失败时回退。
- *   2. 回退：FakeScript.prims 的占位矩形（标注角色名）。
+ * 文本队列与场景画面（prim）均由编辑器投影（buildPreviewScript）提供：
+ *   - texts：speak/dia/audio 线性化为文本队列；
+ *   - prims：bgset/cgset/bsset 投影为真实立绘 / 背景图的占位矩形。
+ *
+ * 真实引擎（Electron 下经 window.rfvp 桥 → rfvp-cli）执行编译产物，只作为
+ * 运行时校验补充 done / audio / error 信号；其 draw_solid 矩形（系统 UI 层）
+ * 不覆盖编辑器投影的场景画面。缺桥 / 编译失败 / 节点不受支持时自动回退演示引擎。
  *
  * 预览保持游戏原始比例（4:3 / 16:9），画布自适应右栏宽度，不拉伸溢出。
  *
@@ -19,6 +22,7 @@ import { buildPreviewScript } from './buildPreviewScript.js';
 import { loadBaseBinary } from './baseBinary.js';
 import { compileEditorStateDetailed } from './compileFromState.js';
 import { RfvpClient } from './RfvpClient.js';
+import { assetUrl } from '../projectDir.js';
 import type { PreviewRatio } from '../preferences/preferences.js';
 
 // pixi 懒加载：需要模块命名空间类型，内联 import() 类型是唯一途径。
@@ -40,67 +44,120 @@ type AppInstance = InstanceType<PixiModule['Application']>;
 type GraphicsCtor = PixiModule['Graphics'];
 type TextCtor = PixiModule['Text'];
 type SpriteCtor = PixiModule['Sprite'];
-type TextureCtor = PixiModule['Texture'];
+type AssetsApi = PixiModule['Assets'];
+type TextureInstance = InstanceType<PixiModule['Texture']>;
 
-function drawPrims(
+/** Pixi v8 的 Texture.from(string) 只读缓存；集中收集并异步装载场景纹理。 */
+export async function loadPrimTextures<T>(
+  prims: readonly FakePrim[],
+  load: (url: string) => Promise<T>,
+): Promise<Map<string, T>> {
+  const urls = new Set<string>();
+  for (const prim of prims) {
+    if (prim.image) {
+      urls.add(assetUrl(prim.image) ?? prim.image);
+    }
+    if (prim.face) {
+      urls.add(assetUrl(prim.face.image) ?? prim.face.image);
+    }
+  }
+  const textures = new Map<string, T>();
+  await Promise.all(
+    [...urls].map(async (url) => {
+      try {
+        textures.set(url, await load(url));
+      } catch {
+        // 单一资源损坏不阻断整个舞台；绘制阶段会回退带角色名的占位框。
+      }
+    }),
+  );
+  return textures;
+}
+
+/**
+ * Pixi v8 预览绘制：先异步解码全部 URL，再原子替换舞台；isCurrent 防止旧工程 /
+ * 旧节点的慢请求覆盖新场景。
+ */
+async function drawPrims(
   app: AppInstance,
   Graphics: GraphicsCtor,
   Text: TextCtor,
   Sprite: SpriteCtor,
-  Texture: TextureCtor,
+  Assets: AssetsApi,
   prims: readonly FakePrim[],
-): void {
+  isCurrent: () => boolean,
+): Promise<void> {
+  const textures = await loadPrimTextures<TextureInstance>(prims, (url) => Assets.load<TextureInstance>(url));
+  if (!isCurrent()) {
+    return;
+  }
+
   app.stage.removeChildren().forEach((child) => child.destroy());
   for (const prim of prims) {
-    const w = prim.fullscreen ? app.screen.width : prim.w && prim.w > 0 ? prim.w : PRIM_W;
-    const h = prim.fullscreen ? app.screen.height : prim.h && prim.h > 0 ? prim.h : PRIM_H;
-    if (prim.image) {
-      const sprite = new Sprite(Texture.from(prim.image));
+    const sourceW = prim.fullscreen ? app.screen.width : prim.w && prim.w > 0 ? prim.w : PRIM_W;
+    const sourceH = prim.fullscreen ? app.screen.height : prim.h && prim.h > 0 ? prim.h : PRIM_H;
+    const fit = prim.fullscreen ? 1 : Math.min(1, app.screen.height / sourceH);
+    const w = sourceW * fit * prim.scale;
+    const h = sourceH * fit * prim.scale;
+    const alignedX =
+      prim.align === 'center'
+        ? (app.screen.width - w) / 2
+        : prim.align === 'right'
+          ? app.screen.width - w
+          : 0;
+    const x = (prim.align ? alignedX : prim.x) + (prim.align ? prim.x : 0);
+    const y = prim.fullscreen ? prim.y : prim.align ? app.screen.height - h + prim.y : prim.y;
+    const imageUrl = prim.image ? assetUrl(prim.image) ?? prim.image : undefined;
+    const texture = imageUrl ? textures.get(imageUrl) : undefined;
+
+    if (texture) {
+      const sprite = new Sprite(texture);
       sprite.width = w;
       sprite.height = h;
-      sprite.x = prim.x;
-      sprite.y = prim.y;
+      sprite.x = x;
+      sprite.y = y;
       sprite.zIndex = prim.z;
       sprite.alpha = prim.alpha;
-      sprite.scale.set(prim.scale);
       sprite.angle = prim.rotate;
       app.stage.addChild(sprite);
 
       if (prim.face) {
-        const sx = prim.face.bodyWidth > 0 ? w / prim.face.bodyWidth : 1;
-        const sy = prim.face.bodyHeight > 0 ? h / prim.face.bodyHeight : 1;
-        const face = new Sprite(Texture.from(prim.face.image));
-        face.width = Math.max(1, prim.face.width * sx);
-        face.height = Math.max(1, prim.face.height * sy);
-        face.x = prim.x + prim.face.x * sx;
-        face.y = prim.y + prim.face.y * sy;
-        face.zIndex = prim.z + 0.5;
-        face.alpha = prim.alpha;
-        face.scale.set(prim.scale);
-        face.angle = prim.rotate;
-        app.stage.addChild(face);
+        const faceUrl = assetUrl(prim.face.image) ?? prim.face.image;
+        const faceTexture = textures.get(faceUrl);
+        if (faceTexture) {
+          const sx = prim.face.bodyWidth > 0 ? w / prim.face.bodyWidth : 1;
+          const sy = prim.face.bodyHeight > 0 ? h / prim.face.bodyHeight : 1;
+          const face = new Sprite(faceTexture);
+          face.width = Math.max(1, prim.face.width * sx);
+          face.height = Math.max(1, prim.face.height * sy);
+          face.x = x + prim.face.x * sx;
+          face.y = y + prim.face.y * sy;
+          face.zIndex = prim.z + 0.5;
+          face.alpha = prim.alpha;
+          face.angle = prim.rotate;
+          app.stage.addChild(face);
+        }
       }
     } else {
       const g = new Graphics();
-      g.roundRect(prim.x, prim.y, w, h, 6);
+      g.roundRect(x, y, w, h, 6);
       g.fill({ color: PRIM_COLOR, alpha: prim.alpha });
       g.stroke({ color: 0x5b6b84, width: 1, alpha: prim.alpha });
       g.zIndex = prim.z;
-      g.scale.set(prim.scale);
       g.angle = prim.rotate;
       app.stage.addChild(g);
-    }
 
-    if (prim.label) {
-      const label = new Text({
-        text: prim.label,
-        style: { fontSize: 13, fill: 0xc4ccd6, fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif' },
-      });
-      label.anchor.set(0.5, 0);
-      label.x = prim.x + w / 2;
-      label.y = prim.y + h + 8;
-      label.zIndex = prim.z;
-      app.stage.addChild(label);
+      if (prim.label) {
+        const label = new Text({
+          text: prim.label,
+          style: { fontSize: 13, fill: 0xc4ccd6, fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif' },
+        });
+        label.anchor.set(0.5, 0);
+        label.x = x + w / 2;
+        label.y = Math.min(app.screen.height - 20, y + h + 8);
+        label.zIndex = prim.z;
+        app.stage.addChild(label);
+      }
     }
   }
 }
@@ -113,20 +170,15 @@ export interface PreviewPanelProps {
 
 type EngineMode = 'fake' | 'real' | 'error';
 
-const ENGINE_LABEL: Record<EngineMode, string> = {
-  fake: '演示引擎',
-  real: '真实引擎',
-  error: '引擎错误（回退演示）',
-};
-
 export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<AppInstance | null>(null);
   const graphicsRef = useRef<GraphicsCtor | null>(null);
   const textRef = useRef<TextCtor | null>(null);
   const spriteRef = useRef<SpriteCtor | null>(null);
-  const textureRef = useRef<TextureCtor | null>(null);
+  const assetsRef = useRef<AssetsApi | null>(null);
   const primsRef = useRef<readonly FakePrim[]>([]);
+  const renderVersionRef = useRef(0);
 
   const clientRef = useRef<RfvpClient | null>(null);
   if (clientRef.current === null) {
@@ -140,8 +192,7 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
   const [text, setText] = useState<string | null>(null);
   const [choices, setChoices] = useState<readonly string[] | null>(null);
   const [done, setDone] = useState(false);
-  const [globals, setGlobals] = useState<Readonly<Record<number, unknown>>>({});
-  const [engineMode, setEngineMode] = useState<EngineMode>(() =>
+  const [, setEngineMode] = useState<EngineMode>(() =>
     clientRef.current!.supported ? 'real' : 'fake',
   );
   const [engineError, setEngineError] = useState<string | null>(null);
@@ -156,36 +207,24 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
           setText(ev.text);
           setDone(false);
           break;
-        // 真实引擎降级（tick 失败 / 进程退出）后，引擎的 done/prims 不可信，
-        // 文本与回退 prim 改由投影队列驱动，故这里忽略引擎的终局与图元事件。
+        // 引擎「真实执行」期间 done 才可信；降级（tick 失败 / 进程退出）后
+        // engineReadyRef=false，终局改由投影文本队列驱动（advance 本地游标耗尽即完）。
         case 'done':
           if (engineReadyRef.current) {
             setDone(true);
           }
-          break;
-        case 'g':
-          setGlobals((prev) => ({ ...prev, [ev.index]: ev.value }));
           break;
         case 'audio':
           setAudioHint(
             `${ev.action === 'play' ? '播放' : ev.action === 'stop' ? '停止' : '加载'}音频 slot ${ev.channel}`,
           );
           break;
-        case 'prims': {
-          if (!engineReadyRef.current) {
-            break;
-          }
-          primsRef.current = ev.prims;
-          const app = appRef.current;
-          const Graphics = graphicsRef.current;
-          const Text = textRef.current;
-          const Sprite = spriteRef.current;
-          const Texture = textureRef.current;
-          if (app && Graphics && Text && Sprite && Texture) {
-            drawPrims(app, Graphics, Text, Sprite, Texture, ev.prims);
-          }
+        // 真实引擎（无头 VM）捕获的 draw_solid 矩形是系统 UI / 对话框 / 转场等
+        // “UI 层”，不含立绘、背景等精灵（draw_sprite 被无头渲染器丢弃）。场景画面
+        // 始终由编辑器投影的 FakeScript.prims（真实立绘 / 背景图）驱动，引擎 prims
+        // 不再覆盖，以免把预览画面替换成系统 UI 矩形。
+        case 'prims':
           break;
-        }
         case 'error':
           engineReadyRef.current = false;
           setEngineMode('error');
@@ -206,14 +245,14 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
     let disposed = false;
     let app: AppInstance | null = null;
 
-    loadPixi().then(({ Application, Graphics, Text, Sprite, Texture }) => {
+    loadPixi().then(({ Application, Graphics, Text, Sprite, Assets }) => {
       if (disposed) {
         return;
       }
       graphicsRef.current = Graphics;
       textRef.current = Text;
       spriteRef.current = Sprite;
-      textureRef.current = Texture;
+      assetsRef.current = Assets;
       const appInstance = new Application();
       app = appInstance;
       return appInstance
@@ -227,18 +266,28 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
           appInstance.stage.sortableChildren = true;
           hostRef.current?.appendChild(appInstance.canvas);
           appRef.current = appInstance;
-          drawPrims(appInstance, Graphics, Text, Sprite, Texture, primsRef.current);
+          const version = ++renderVersionRef.current;
+          void drawPrims(
+            appInstance,
+            Graphics,
+            Text,
+            Sprite,
+            Assets,
+            primsRef.current,
+            () => !disposed && version === renderVersionRef.current,
+          );
         });
     });
 
     return () => {
       disposed = true;
+      renderVersionRef.current += 1;
       app?.destroy();
       appRef.current = null;
       graphicsRef.current = null;
       textRef.current = null;
       spriteRef.current = null;
-      textureRef.current = null;
+      assetsRef.current = null;
     };
   }, [width, height]);
 
@@ -268,7 +317,6 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
     setText(null);
     setChoices(null);
     setDone(false);
-    setGlobals({});
     setEngineError(null);
     setAudioHint(null);
 
@@ -276,9 +324,18 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
     const Graphics = graphicsRef.current;
     const Text = textRef.current;
     const Sprite = spriteRef.current;
-    const Texture = textureRef.current;
-    if (app && Graphics && Text && Sprite && Texture) {
-      drawPrims(app, Graphics, Text, Sprite, Texture, primsRef.current);
+    const Assets = assetsRef.current;
+    if (app && Graphics && Text && Sprite && Assets) {
+      const version = ++renderVersionRef.current;
+      void drawPrims(
+        app,
+        Graphics,
+        Text,
+        Sprite,
+        Assets,
+        primsRef.current,
+        () => version === renderVersionRef.current,
+      );
     }
 
     // 真实引擎重载防抖：连线/拖动会高频触发 state 变化，
@@ -311,8 +368,8 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
       setEngineMode('real');
       void loadBaseBinary(state.header.game)
         .then((baseData) => {
-          const { bytes, labels } = compileEditorStateDetailed(state, baseData);
-          return client.load(bytes, state.header.nls, labels);
+          const { bytes, scriptEntry, labels } = compileEditorStateDetailed(state, baseData);
+          return client.load(bytes, state.header.nls, scriptEntry, labels);
         })
         .then(() => {
           engineReadyRef.current = true;
@@ -341,7 +398,7 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
       setChoices(next.choices ?? null);
       setDone(false);
       if (next.audioSrc) {
-        const audio = new Audio(next.audioSrc);
+        const audio = new Audio(assetUrl(next.audioSrc) ?? next.audioSrc);
         void audio.play().catch(() => {});
       }
     } else {
@@ -349,26 +406,10 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
     }
   }, []);
 
-  const skip = useCallback(() => {
-    const client = clientRef.current!;
-    if (client.supported && engineReadyRef.current) {
-      void client.skip();
-    }
-    cursorRef.current = textsRef.current.length;
-    setText(null);
-    setChoices(null);
-    setDone(true);
-  }, []);
-
   const labels = state.document.nodes.filter((n) => n.node.kind === 'label');
 
   return (
     <div className="preview">
-      <div className="preview__toolbar">
-        <button type="button" className="topbar-btn" onClick={skip}>跳过</button>
-        <span className={`preview__engine preview__engine--${engineMode}`}>{ENGINE_LABEL[engineMode]}</span>
-        <span className="preview__toolbar-hint">点击画面推进</span>
-      </div>
       {engineError && <div className="preview__engine-error">{engineError}</div>}
       <div className="preview__stage" ref={hostRef} onClick={advance}>
         <div className="preview__stage-hint">{text === null && !done ? '点击推进' : ''}</div>
@@ -405,19 +446,6 @@ export function PreviewPanel({ state, ratio, onLocate }: PreviewPanelProps) {
             >
               {n.node.kind === 'label' ? n.node.name : n.id}
             </button>
-          ))
-        )}
-      </div>
-      <div className="preview__globals">
-        <div className="preview__globals-title">G[]</div>
-        {Object.entries(globals).length === 0 ? (
-          <div className="preview__globals-empty">空</div>
-        ) : (
-          Object.entries(globals).map(([index, value]) => (
-            <div className="preview__global" key={index}>
-              <span className="preview__global-index">G[{index}]</span>
-              <span className="preview__global-value">{String(value)}</span>
-            </div>
           ))
         )}
       </div>

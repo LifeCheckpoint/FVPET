@@ -4,13 +4,14 @@
  */
 
 import { useMemo, useState } from 'react';
-import { availableBaseBackgrounds, availableBaseCharacters } from '@hcb-editor/compiler';
+import { availableBaseBackgrounds, availableBaseCgs, availableBaseCharacters } from '@hcb-editor/compiler';
 import type { AudioResource, EditorState } from '@hcb-editor/editor';
 import type { EditorStore } from '@hcb-editor/editor';
 import { nodeKindLabel } from '../theme/meta.js';
 import { renderCond } from '@hcb-editor/editor';
 import type { IrNode } from '@hcb-editor/hcb/ir';
 import { ResourcePicker, type ResourcePickerKind, type ResourcePickerResult } from './ResourcePicker.js';
+import { assetUrl } from '../projectDir.js';
 
 export interface PropertyPanelProps {
   readonly state: EditorState;
@@ -48,6 +49,10 @@ function resourceRefWarnings(node: IrNode, state: EditorState): string[] {
     ...availableBaseBackgrounds(state.header.game),
     ...state.resources.backgrounds.map((b) => b.name),
   ]);
+  const cgNames = new Set([
+    ...availableBaseCgs(state.header.game).map((name) => name.toUpperCase()),
+    ...state.resources.cgs.map((c) => c.name.toUpperCase()),
+  ]);
   if (node.kind === 'speak' && node.speaker !== '' && !charNames.has(node.speaker)) {
     warnings.push(`角色「${node.speaker}」不在底座或资源表中`);
   }
@@ -57,8 +62,8 @@ function resourceRefWarnings(node: IrNode, state: EditorState): string[] {
   if (node.kind === 'bgset' && node.background !== '' && !bgNames.has(node.background)) {
     warnings.push(`背景「${node.background}」不在底座或资源表中`);
   }
-  if (node.kind === 'cgset' && node.name !== '' && !state.resources.cgs.some((c) => c.name.toLowerCase() === node.name.toLowerCase())) {
-    warnings.push(`CG「${node.name}」尚未导入`);
+  if (node.kind === 'cgset' && node.name !== '' && !cgNames.has(node.name.toUpperCase())) {
+    warnings.push(`CG「${node.name}」尚未导入且不在底座预载表中`);
   }
   if (node.kind === 'audio' && state.resources.audios.length > 0) {
     const has = state.resources.audios.some((a) => a.type === node.type && a.number === node.channelOrNum);
@@ -78,12 +83,13 @@ function resourceRefWarnings(node: IrNode, state: EditorState): string[] {
 export function PropertyPanel({ state, store }: PropertyPanelProps) {
   const baseCharacters = useMemo(() => availableBaseCharacters(state.header.game), [state.header.game]);
   const baseBackgrounds = useMemo(() => availableBaseBackgrounds(state.header.game), [state.header.game]);
+  const baseCgs = useMemo(() => availableBaseCgs(state.header.game), [state.header.game]);
   const projectCharacters = useMemo(() => state.resources.characters.map((c) => c.name), [state.resources.characters]);
   const projectBackgrounds = useMemo(() => state.resources.backgrounds.map((b) => b.name), [state.resources.backgrounds]);
   const projectCgs = useMemo(() => state.resources.cgs.map((c) => c.name), [state.resources.cgs]);
   const speakerOptions = useMemo(() => [...new Set([...baseCharacters, ...projectCharacters])], [baseCharacters, projectCharacters]);
   const backgroundOptions = useMemo(() => [...new Set([...baseBackgrounds, ...projectBackgrounds])], [baseBackgrounds, projectBackgrounds]);
-  const cgOptions = useMemo(() => [...new Set(projectCgs)], [projectCgs]);
+  const cgOptions = useMemo(() => [...new Set([...baseCgs, ...projectCgs])], [baseCgs, projectCgs]);
 
   const [picker, setPicker] = useState<{ readonly kind: ResourcePickerKind; readonly audioType?: AudioResource['type'] } | null>(null);
 
@@ -218,7 +224,7 @@ export function PropertyPanel({ state, store }: PropertyPanelProps) {
             </div>
             {(() => {
               const bg = state.resources.backgrounds.find((b) => b.name === node.background);
-              return bg?.image ? <img className="pp__picker-preview" src={bg.thumb ?? bg.image} alt={node.background} /> : null;
+              return bg?.image ? <img className="pp__picker-preview" src={assetUrl(bg.thumb ?? bg.image)} alt={node.background} /> : null;
             })()}
           </div>
           <label className="pp__field">
@@ -254,17 +260,63 @@ export function PropertyPanel({ state, store }: PropertyPanelProps) {
             </div>
             {(() => {
               const cg = state.resources.cgs.find((c) => c.name.toLowerCase() === node.name.toLowerCase());
-              return cg ? <img className="pp__picker-preview" src={cg.thumb ?? cg.image} alt={node.name} /> : null;
+              return cg ? <img className="pp__picker-preview" src={assetUrl(cg.thumb ?? cg.image)} alt={node.name} /> : null;
             })()}
           </div>
           <div className="pp__field">
-            <span className="pp__label">槽位 slot / 模式 mode / 标志 flag</span>
+            <span className="pp__label">坐标 x / y（留空使用 CG 内置设定）</span>
             <div className="pp__choice">
-              <input className="pp__input" type="number" value={node.slot} onChange={(e) => edit({ ...node, slot: Number(e.target.value) })} />
-              <input className="pp__input" type="number" value={node.mode} onChange={(e) => edit({ ...node, mode: Number(e.target.value) })} />
-              <input className="pp__input" type="number" value={node.flag} onChange={(e) => edit({ ...node, flag: Number(e.target.value) })} />
+              <input
+                className="pp__input"
+                type="number"
+                value={node.x ?? ''}
+                placeholder="内置"
+                onChange={(e) => {
+                  const next = { ...node };
+                  if (e.target.value === '') delete next.x;
+                  else next.x = Number(e.target.value);
+                  edit(next);
+                }}
+              />
+              <input
+                className="pp__input"
+                type="number"
+                value={node.y ?? ''}
+                placeholder="内置"
+                onChange={(e) => {
+                  const next = { ...node };
+                  if (e.target.value === '') delete next.y;
+                  else next.y = Number(e.target.value);
+                  edit(next);
+                }}
+              />
             </div>
           </div>
+          <label className="pp__field">
+            <span className="pp__label">缩放（1 = 原始比例，留空使用内置设定）</span>
+            <input
+              className="pp__input"
+              type="number"
+              step="0.1"
+              value={node.scale ?? ''}
+              placeholder="内置"
+              onChange={(e) => {
+                const next = { ...node };
+                if (e.target.value === '') delete next.scale;
+                else next.scale = Number(e.target.value);
+                edit(next);
+              }}
+            />
+          </label>
+          <label className="pp__field">
+            <span className="pp__label">转场时间（毫秒）</span>
+            <input
+              className="pp__input"
+              type="number"
+              value={node.time ?? 0}
+              onChange={(e) => edit({ ...node, time: Number(e.target.value) })}
+            />
+          </label>
         </>
       )}
 
@@ -349,7 +401,7 @@ export function PropertyPanel({ state, store }: PropertyPanelProps) {
               const pose = char?.poses?.find((p) => p.pose === node.pose && p.costume === node.costume);
               const faceImg = node.expression > 0 ? pose?.faces.find((f) => f.face === node.expression)?.image : undefined;
               const img = faceImg ?? pose?.image ?? char?.image;
-              return img ? <img className="pp__picker-preview pp__picker-preview--portrait" src={img} alt={node.character} /> : null;
+              return img ? <img className="pp__picker-preview pp__picker-preview--portrait" src={assetUrl(img)} alt={node.character} /> : null;
             })()}
           </div>
           <label className="pp__field">
@@ -363,6 +415,22 @@ export function PropertyPanel({ state, store }: PropertyPanelProps) {
           <label className="pp__field">
             <span className="pp__label">表情 face</span>
             <input className="pp__input" type="number" value={node.expression} onChange={(e) => edit({ ...node, expression: Number(e.target.value) })} />
+          </label>
+          <label className="pp__field">
+            <span className="pp__label">站位</span>
+            <select
+              className="pp__input"
+              value={node.loc ?? 'm'}
+              onChange={(e) => edit({ ...node, loc: e.target.value as 'l' | 'm' | 'r' })}
+            >
+              <option value="l">左（l）</option>
+              <option value="m">中（m）</option>
+              <option value="r">右（r）</option>
+            </select>
+          </label>
+          <label className="pp__field">
+            <span className="pp__label">z 坐标</span>
+            <input className="pp__input" type="number" value={node.z ?? 0} onChange={(e) => edit({ ...node, z: Number(e.target.value) })} />
           </label>
           <label className="pp__field">
             <span className="pp__label">层次 layer</span>
@@ -396,6 +464,43 @@ export function PropertyPanel({ state, store }: PropertyPanelProps) {
                 选择…
               </button>
             </div>
+          </label>
+          <label className="pp__field">
+            <span className="pp__label">动作</span>
+            <select
+              className="pp__input"
+              value={node.action ?? 'play'}
+              onChange={(e) => {
+                const next = { ...node };
+                if (e.target.value === 'play') {
+                  delete next.action;
+                } else {
+                  next.action = 'stop';
+                }
+                edit(next);
+              }}
+            >
+              <option value="play">播放</option>
+              <option value="stop">停止</option>
+            </select>
+          </label>
+          <label className="pp__field">
+            <span className="pp__label">时长（毫秒，loop / 停止用）</span>
+            <input
+              className="pp__input"
+              type="number"
+              value={node.time ?? ''}
+              placeholder="可选"
+              onChange={(e) => {
+                const next = { ...node };
+                if (e.target.value === '') {
+                  delete next.time;
+                } else {
+                  next.time = Number(e.target.value);
+                }
+                edit(next);
+              }}
+            />
           </label>
           <label className="pp__field pp__field--check">
             <span className="pp__label">循环</span>
@@ -453,6 +558,27 @@ export function PropertyPanel({ state, store }: PropertyPanelProps) {
             <option value="boxout">boxout（框出）</option>
           </select>
         </label>
+      )}
+
+      {node.kind === 'eyecatch' && (
+        <div className="pp__field">
+          <span className="pp__label">转场</span>
+          <div className="pp__readonly">eyecatch 转场特效</div>
+        </div>
+      )}
+
+      {node.kind === 'bsfade' && (
+        <div className="pp__field">
+          <span className="pp__label">消除立绘</span>
+          <div className="pp__readonly">清除当前显示的角色立绘</div>
+        </div>
+      )}
+
+      {node.kind === 'white' && (
+        <div className="pp__field">
+          <span className="pp__label">白屏</span>
+          <div className="pp__readonly">背景调白特效</div>
+        </div>
       )}
 
       {node.kind === 'raw' && (

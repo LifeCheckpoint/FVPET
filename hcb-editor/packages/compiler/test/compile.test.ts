@@ -64,7 +64,7 @@ describe('compile pipeline (synthetic, CI-independent)', () => {
     expect(jz).toBeDefined();
   });
 
-  it('compiles cgset to push_i16 + push_string + push_i8×2 + call f_000373a5', () => {
+  it('compiles cgset to six arguments + the preprocessed base CG-specific function', () => {
     const nls: Nls = 'sjis';
     const cgIr: IrScript = {
       header: { schemaVersion: 1, engine: 'fvp', game: 'test', nls: 'sjis' },
@@ -75,22 +75,24 @@ describe('compile pipeline (synthetic, CI-independent)', () => {
     };
     const bytes = compile(cgIr, {
       sysdesc: emptySysdesc(),
-      tables: { characters: {}, backgrounds: {}, globals: {} },
+      tables: {
+        characters: {},
+        backgrounds: {},
+        cgs: { ASAHI_E011A1: { fn: 0x000035b6 } },
+        globals: {},
+      },
       nls,
     });
     const decoded = decodeHcb(bytes, nls);
     const idx = decoded.instructions.findIndex(
-      (i) => i.mnemonic === 'call' && i.args.kind === 'x32' && i.args.target === 0x000373a5,
+      (i) => i.mnemonic === 'call' && i.args.kind === 'x32' && i.args.target === 0x000035b6,
     );
-    expect(idx).toBeGreaterThanOrEqual(4);
-    expect(decoded.instructions[idx - 1]!.mnemonic).toBe('push_i8');
-    expect(decoded.instructions[idx - 2]!.mnemonic).toBe('push_i8');
-    expect(decoded.instructions[idx - 3]!.mnemonic).toBe('push_string');
-    expect(decoded.instructions[idx - 4]!.mnemonic).toBe('push_i16');
-    const str = decoded.instructions[idx - 3]!;
-    if (str.args.kind === 'string') {
-      expect(str.args.text).toBe('ASAHI_E011A1');
-    }
+    expect(idx).toBeGreaterThanOrEqual(6);
+    expect(decoded.instructions.slice(idx - 6, idx - 1).every((i) => i.mnemonic === 'push_nil')).toBe(true);
+    expect(decoded.instructions[idx - 1]!.mnemonic).toBe('push_i16');
+    expect(decoded.instructions.some(
+      (i) => i.mnemonic === 'call' && i.args.kind === 'x32' && i.args.target === 0x000373a5,
+    )).toBe(false);
   });
 
   it('passes raw bytes through and relocates a jmp to a label', () => {
@@ -139,12 +141,15 @@ describe('compile pipeline (synthetic, CI-independent)', () => {
     const baseData = compile(libraryIr, ctx);
     const baseCodeEnd = decodeHcb(baseData, nls).sysdesc.sysDescOffset;
 
-    const out = compileWithBase(scriptIr, ctx, baseData);
-    // 底座代码区逐字节保留
+    const out = compileWithBase(scriptIr, ctx, baseData, new Uint8Array(0), baseCodeEnd);
+    // 底座库代码区逐字节保留（合成底座无 base_off 引用，patch 不改变任何字节）
     expect(Buffer.from(out.subarray(4, baseCodeEnd)).equals(Buffer.from(baseData.subarray(4, baseCodeEnd)))).toBe(true);
 
     const decoded = decodeHcb(out, nls);
-    expect(decoded.sysdesc.entryPoint).toBe(baseCodeEnd);
+    // 新脚本从 mainOffset（库代码结束）开始，以 init_stack 开头。
+    const entry = decoded.instructions.find((i) => i.addr === baseCodeEnd);
+    expect(entry).toBeDefined();
+    expect(entry!.mnemonic).toBe('init_stack');
     expect(decoded.instructions.length).toBeGreaterThan(0);
   });
 });

@@ -16,7 +16,7 @@ export interface Preferences {
 
 export const DEFAULT_PREFERENCES: Preferences = {
   theme: 'dark',
-  defaultNls: 'sjis',
+  defaultNls: 'gbk',
   previewRatio: '4:3',
   autoCompile: false,
 };

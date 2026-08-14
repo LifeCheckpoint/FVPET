@@ -11,7 +11,12 @@ export interface RfvpLoadResult {
 }
 
 export interface RfvpBridge {
-  load(bytes: Uint8Array, nls: string, labels?: Readonly<Record<string, number>>): Promise<RfvpLoadResult>;
+  load(
+    bytes: Uint8Array,
+    nls: string,
+    scriptEntry: number,
+    labels?: Readonly<Record<string, number>>,
+  ): Promise<RfvpLoadResult>;
   jump(label: string): Promise<void>;
   advance(): Promise<void>;
   step(): Promise<void>;

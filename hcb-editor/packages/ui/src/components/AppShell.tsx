@@ -5,9 +5,9 @@
 
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
-import { deserializeProject } from '@hcb-editor/editor';
-import { saveBinaryFile } from '../fileDialog.js';
-import { openProjectDir, saveProjectDir, saveProjectDirAs } from '../projectDir.js';
+import { deserializeProject, replaceAssetRefs } from '@hcb-editor/editor';
+import { openTextFile, saveBinaryFile } from '../fileDialog.js';
+import { getActiveProjectDir, openProjectDir, saveProjectDir, saveProjectDirAs, setActiveProjectDir } from '../projectDir.js';
 import { loadBaseBinary } from '../preview/baseBinary.js';
 import { compileEditorState } from '../preview/compileFromState.js';
 import { useEditorStore } from '../store/useEditorStore.js';
@@ -58,16 +58,14 @@ export function AppShell() {
   const [view, setView] = useState<MainView>('editor');
   const [showSettings, setShowSettings] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
-  const wizardShown = useRef(false);
+  const [hasProject, setHasProject] = useState(false);
   const [savedPath, setSavedPath] = useState<string | null>(null);
 
   // 面板尺寸（可拖拽调节，内存态，不持久化）。
-  const [leftWidth, setLeftWidth] = useState(252);
   const [rightWidth, setRightWidth] = useState(() => Math.max(320, Math.round(window.innerWidth * 0.38)));
   const [previewRatio, setPreviewRatio] = useState(0.55);
   const rightRef = useRef<HTMLElement>(null);
 
-  const clampLeft = (w: number): number => Math.min(480, Math.max(200, w));
   const clampRight = (w: number): number => Math.min(window.innerWidth - 400, Math.max(320, w));
 
   useEffect(() => {
@@ -77,13 +75,6 @@ export function AppShell() {
     };
   }, [prefs.theme]);
 
-  useEffect(() => {
-    if (!wizardShown.current) {
-      wizardShown.current = true;
-      setShowWizard(true);
-    }
-  }, []);
-
   const addNode = (kind: CreatableNodeKind) => {
     flowRef.current?.add(kind);
   };
@@ -91,10 +82,42 @@ export function AppShell() {
   const locateNode = (nodeId: string) => {
     flowRef.current?.locate(nodeId);
   };
+/** 保存工程：已保存过则静默写回原目录；否则弹「另存为」并记录目录。 */
 const saveProject = () => {
-  void saveProjectDir(state).then((path) => {
+  if (savedPath) {
+    void saveProjectDirAs(savedPath, state)
+      .then((refs) => {
+        if (Object.keys(refs).length > 0) {
+          store.dispatch(replaceAssetRefs(refs));
+        }
+        store.markSaved();
+      })
+      .catch(() => {
+        // 写回失败（目录被移动等）静默忽略，可改用「另存为」。
+      });
+    return;
+  }
+  void saveProjectDir(state).then(({ path, refs }) => {
     if (path) {
       setSavedPath(path);
+      setActiveProjectDir(path);
+      if (Object.keys(refs).length > 0) {
+        store.dispatch(replaceAssetRefs(refs));
+      }
+      store.markSaved();
+    }
+  });
+};
+
+/** 另存为：始终弹目录选择对话框，保存到新目录并切换活动工程。 */
+const saveProjectAs = () => {
+  void saveProjectDir(state).then(({ path, refs }) => {
+    if (path) {
+      setSavedPath(path);
+      setActiveProjectDir(path);
+      if (Object.keys(refs).length > 0) {
+        store.dispatch(replaceAssetRefs(refs));
+      }
       store.markSaved();
     }
   });
@@ -107,27 +130,56 @@ useEffect(() => {
   }
   const timer = setTimeout(() => {
     void saveProjectDirAs(savedPath, state)
-      .then(() => store.markSaved())
+      .then((refs) => {
+        if (Object.keys(refs).length > 0) {
+          store.dispatch(replaceAssetRefs(refs));
+        }
+        store.markSaved();
+      })
       .catch(() => {
         // 自动保存失败（目录被移动等）静默忽略，不打断用户。
       });
   }, 3000);
   return () => clearTimeout(timer);
 }, [savedPath, state, store]);
+function parentDir(filePath: string): string | null {
+  const separator = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
+  return separator > 0 ? filePath.slice(0, separator) : null;
+}
 
 const openProject = (file: File) => {
   void file.text().then((text) => {
     store.load(deserializeProject(text));
+    // Electron 的 File 对象可能携带 path；普通浏览器没有该字段。
+    const filePath = (file as File & { readonly path?: string }).path;
+    const dir = filePath ? parentDir(filePath) : null;
+    setSavedPath(dir);
+    setActiveProjectDir(dir);
+    setHasProject(true);
   });
 };
 
 const openProjectDialog = () => {
-  void openProjectDir().then((loaded) => {
+  void openProjectDir().then(async (loaded) => {
     if (loaded) {
       store.load(loaded);
-    } else {
-      fileInputRef.current?.click();
+      setSavedPath(getActiveProjectDir());
+      setHasProject(true);
+      return;
     }
+
+    // Electron 下允许直接选择 F:/.../project.json；必须保留其父目录，
+    // 否则 project.json 中的 assets/... 会被 Pixi 当作应用目录相对 URL。
+    const picked = await openTextFile();
+    if (picked?.path) {
+      store.load(deserializeProject(picked.text));
+      const dir = parentDir(picked.path);
+      setSavedPath(dir);
+      setActiveProjectDir(dir);
+      setHasProject(true);
+      return;
+    }
+    fileInputRef.current?.click();
   });
 };
 
@@ -161,6 +213,7 @@ const exportHcb = () => {
             role="tab"
             aria-selected={view === 'editor'}
             className={`app__view${view === 'editor' ? ' app__view--active' : ''}`}
+            disabled={!hasProject}
             onClick={() => setView('editor')}
           >
             剧情编辑器
@@ -170,6 +223,7 @@ const exportHcb = () => {
             role="tab"
             aria-selected={view === 'workspace'}
             className={`app__view${view === 'workspace' ? ' app__view--active' : ''}`}
+            disabled={!hasProject}
             onClick={() => setView('workspace')}
           >
             资源工作台
@@ -182,8 +236,11 @@ const exportHcb = () => {
           <button type="button" className="topbar-btn" disabled={!store.canRedo} onClick={() => store.redo()}>
             重做
           </button>
-          <button type="button" className="topbar-btn" onClick={saveProject}>
+          <button type="button" className="topbar-btn" disabled={!hasProject} onClick={saveProject}>
             保存工程
+          </button>
+          <button type="button" className="topbar-btn" disabled={!hasProject} onClick={saveProjectAs}>
+            另存为
           </button>
           <button type="button" className="topbar-btn" onClick={openProjectDialog}>
             打开工程
@@ -201,10 +258,10 @@ const exportHcb = () => {
               e.target.value = '';
             }}
           />
-          <button type="button" className="topbar-btn" onClick={exportHcb}>
+          <button type="button" className="topbar-btn" disabled={!hasProject} onClick={exportHcb}>
             导出 .hcb
           </button>
-          <button type="button" className="topbar-btn" onClick={() => setView('workspace')}>
+          <button type="button" className="topbar-btn" disabled={!hasProject} onClick={() => setView('workspace')}>
             资源
           </button>
           <button type="button" className="topbar-btn" onClick={() => setShowSettings(true)}>
@@ -216,17 +273,20 @@ const exportHcb = () => {
         </div>
       </header>
 
-      {view === 'editor' ? (
-        <div className="app__body">
-          <div className="app__palette-col" style={{ width: leftWidth }}>
-            <Palette onAdd={addNode} onOpenResources={() => setView('workspace')} />
+      {!hasProject ? (
+        <div className="app__empty">
+          <div className="app__empty-card">
+            <div className="app__empty-title">FVP 剧情编辑器</div>
+            <p className="app__empty-hint">新建或打开一个工程开始编辑剧情。</p>
+            <div className="app__empty-actions">
+              <button type="button" className="btn btn--primary" onClick={() => setShowWizard(true)}>新建工程</button>
+              <button type="button" className="btn btn--secondary" onClick={openProjectDialog}>打开工程</button>
+            </div>
           </div>
-          <div
-            className="app__resizer app__resizer--col"
-            role="separator"
-            aria-orientation="vertical"
-            onMouseDown={(e) => dragResize(e, 'col-resize', (dx) => setLeftWidth((w) => clampLeft(w + dx)))}
-          />
+        </div>
+      ) : view === 'editor' ? (
+        <div className="app__body">
+          <Palette onAdd={addNode} onOpenResources={() => setView('workspace')} />
 
           <main className="app__canvas">
           <ReactFlowProvider>
@@ -314,7 +374,18 @@ const exportHcb = () => {
       )}
 
       {showSettings && <Settings prefs={prefs} update={update} onClose={() => setShowSettings(false)} />}
-      {showWizard && <NewProjectWizard store={store} defaultNls={prefs.defaultNls} onClose={() => setShowWizard(false)} />}
+      {showWizard && (
+        <NewProjectWizard
+          store={store}
+          defaultNls={prefs.defaultNls}
+          onClose={(created) => {
+            setShowWizard(false);
+            if (created) {
+              setHasProject(true);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

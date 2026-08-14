@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FakeEngine } from '@hcb-editor/rfvp';
+import { FakeEngine, PROTOCOL_VERSION, RfvpRequest } from '@hcb-editor/rfvp';
 
 describe('FakeEngine', () => {
   it('drives a script through advance until done', () => {
@@ -27,5 +27,11 @@ describe('FakeEngine', () => {
 
     expect(engine.handle({ op: 'advance' })).toEqual([{ type: 'text', slot: 0, text: '回放。' }]);
     expect(engine.handle({ op: 'advance' })).toEqual([{ type: 'done' }]);
+  });
+
+  it('requires the compiled script entry in load requests', () => {
+    expect(PROTOCOL_VERSION).toBe(2);
+    expect(RfvpRequest.safeParse({ op: 'load', hcbPath: 'preview.hcb', scriptEntry: 0x8aec7 }).success).toBe(true);
+    expect(RfvpRequest.safeParse({ op: 'load', hcbPath: 'preview.hcb' }).success).toBe(false);
   });
 });

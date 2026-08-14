@@ -5,8 +5,9 @@
  */
 
 import * as path from 'node:path';
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, protocol } from 'electron';
 import { registerBaseGameIpc, registerFileDialogIpc, registerProjectDirIpc, registerRfvpIpc } from './ipc.js';
+import { registerAssetProtocol } from './asset-protocol.js';
 import { RfvpProcessManager } from './rfvp-process-manager.js';
 
 /** 演示壳地址：dev 下由 ui 的 Vite dev server 提供（dev:test 固定 5199）。 */
@@ -48,7 +49,17 @@ async function createWindow(): Promise<void> {
   await loadWithRetry(win, DEV_URL);
 }
 
+// 自定义资产协议必须注册为 privileged（且必须在 app ready 之前调用），
+// 否则 <img>/<audio>/fetch 无法按标准 scheme 解析，资源将无法加载。
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'fvpet-asset',
+    privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true },
+  },
+]);
+
 void app.whenReady().then(async () => {
+  registerAssetProtocol();
   const manager = new RfvpProcessManager();
   registerRfvpIpc(manager);
   registerBaseGameIpc();

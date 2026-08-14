@@ -57,9 +57,9 @@ describe('synthetic scenario (G21)', () => {
     expect(syscalls).toContain('ThreadWait');
     // thread → ThreadStart
     expect(syscalls).toContain('ThreadStart');
-    // audio → AudioLoad + AudioPlay
-    expect(syscalls).toContain('AudioLoad');
-    expect(syscalls).toContain('AudioPlay');
+    // BGM → 预处理底座有效包装函数（不得用 AudioLoad(channel,nil) 卸载通道）。
+    expect(callTargets).toContain(0x00040552);
+    expect(syscalls).not.toContain('AudioLoad');
     // msgset normal → call f_000349f1（恢复对话栏显示）
     expect(callTargets).toContain(0x000349f1);
     // branch → jz；jump → jmp

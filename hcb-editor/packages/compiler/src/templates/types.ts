@@ -90,13 +90,20 @@ export interface CharacterEntry {
 }
 
 export interface BackgroundEntry {
-  readonly fn: number; // 背景加载函数地址（Sakura moyu 为共享 f_00037421）
-  readonly number?: number; // 背景资源编号（push_i16 入参）
+  readonly fn: number; // 预处理底座中的背景专属函数地址
+  readonly number?: number; // 背景组编号（用于 bg_<编号> 名称解析）
+  readonly args?: number; // 函数 init_stack 参数数；Sakura moyu 背景族并非全部相同
+}
+
+export interface CgEntry {
+  readonly fn: number; // 预处理底座中的 CG 专属函数地址
 }
 
 export interface GameTables {
   readonly characters: Readonly<Record<string, CharacterEntry>>;
   readonly backgrounds: Readonly<Record<string, BackgroundEntry>>;
+  /** CG 名（统一大写）→ 专属加载函数。旧的共享 f_000373a5 不属于预处理底座。 */
+  readonly cgs?: Readonly<Record<string, CgEntry>>;
   readonly globals: Readonly<Record<string, number>>;
 }
 

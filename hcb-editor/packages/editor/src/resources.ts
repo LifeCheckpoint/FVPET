@@ -96,3 +96,19 @@ export interface ProjectResources {
 export function emptyResources(): ProjectResources {
   return { characters: [], backgrounds: [], cgs: [], audios: [] };
 }
+
+/**
+ * 资源字段值是否为内联 data URL（即尚未落盘的新导入资源）。
+ * 落盘后的资源字段为相对路径引用（assets/<hash>.<ext>）。
+ */
+export function isDataUrl(value: string | undefined): boolean {
+  return value !== undefined && value.startsWith('data:');
+}
+
+/**
+ * 资源字段值是否为已落盘引用（非空且不是 data URL）。
+ * 浏览器单文件降级模式下资源字段仍为 data URL，此时返回 false。
+ */
+export function isAssetRef(value: string | undefined): boolean {
+  return value !== undefined && value !== '' && !value.startsWith('data:');
+}

@@ -16,7 +16,12 @@ function characterOverlayAt(
   pose: number,
   costume: number,
   face: number,
-): { readonly image: string; readonly face?: NonNullable<FakePrim['face']> } | undefined {
+): {
+  readonly image: string;
+  readonly width?: number;
+  readonly height?: number;
+  readonly face?: NonNullable<FakePrim['face']>;
+} | undefined {
   const char = resources?.characters.find((c) => c.name === name);
   if (!char) {
     return undefined;
@@ -31,6 +36,8 @@ function characterOverlayAt(
     if (f) {
       return {
         image,
+        ...(matched.bodyWidth !== undefined ? { width: matched.bodyWidth } : {}),
+        ...(matched.bodyHeight !== undefined ? { height: matched.bodyHeight } : {}),
         face: {
           image: f.image,
           x: matched.faceX,
@@ -43,7 +50,11 @@ function characterOverlayAt(
       };
     }
   }
-  return { image };
+  return {
+    image,
+    ...(matched?.bodyWidth !== undefined ? { width: matched.bodyWidth } : {}),
+    ...(matched?.bodyHeight !== undefined ? { height: matched.bodyHeight } : {}),
+  };
 }
 
 export function buildPreviewScript(
@@ -121,12 +132,19 @@ export function buildPreviewScript(
         scale: 1,
         rotate: 0,
         blend: 0,
+        align: node.loc === 'l' ? 'left' : node.loc === 'r' ? 'right' : 'center',
       };
       if (node.character !== '') {
         prim.label = node.character;
         const overlay = characterOverlayAt(resources, node.character, node.pose, node.costume, node.expression);
         if (overlay) {
           prim.image = overlay.image;
+          if (overlay.width !== undefined) {
+            prim.w = overlay.width;
+          }
+          if (overlay.height !== undefined) {
+            prim.h = overlay.height;
+          }
           if (overlay.face) {
             prim.face = overlay.face;
           }

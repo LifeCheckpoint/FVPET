@@ -19,10 +19,12 @@ export interface FakePrim {
   readonly scale: number;
   readonly rotate: number;
   readonly blend: number;
-  /** 可选宽高（真实引擎 draw_solid 的矩形尺寸；缺省时用占位尺寸绘制）。 */
+  /** 可选宽高（图片原始尺寸或真实引擎 draw_solid 的矩形尺寸；缺省时用占位尺寸绘制）。 */
   w?: number | undefined;
   h?: number | undefined;
-  /** 可选显示标签（立绘占位显示角色名，真实引擎无此字段）。 */
+  /** 立绘水平站位；渲染时在舞台内按左/中/右对齐，再叠加 x 偏移。 */
+  align?: 'left' | 'center' | 'right' | undefined;
+  /** 可选显示标签（仅资源图片加载失败时作为立绘占位提示）。 */
   label?: string | undefined;
   /** 可选立绘图片 data URL（资源管理器导入后用于预览真图）。 */
   image?: string | undefined;
@@ -80,7 +82,7 @@ export class FakeEngine {
         return [{ type: 'ready', protocolVersion: req.protocolVersion }];
       case 'load':
         this.load({ texts: [], prims: this.prims });
-        return [{ type: 'ready', protocolVersion: 1 }];
+        return [{ type: 'ready', protocolVersion: 2 }];
       case 'jump':
         this.cursor = 0;
         return this.emitCurrent();

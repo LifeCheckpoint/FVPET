@@ -6,11 +6,9 @@
  * 修改走资源命令（add/edit/remove），undo/redo 由 store 统一接管。
  */
 
-import { useRef, useState, type CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 import {
-  addAudio,
   addAudios,
-  addBackground,
   addBackgrounds,
   addCgs,
   editAudio,
@@ -24,25 +22,19 @@ import {
   renameCharacter,
   type AudioResource,
   type BackgroundResource,
+  type CharacterFace,
   type CharacterPose,
   type CharacterResource,
   type EditorState,
   type EditorStore,
 } from '@hcb-editor/editor';
+import { assetUrl } from '../projectDir.js';
 import { loadBaseGame } from '@hcb-editor/compiler';
 import { importGraphBsFile } from '../resources/graph-bs.js';
 import { importCgBinFile, importGraphBgFile } from '../resources/graph-bg.js';
 import { importBgmBinFile } from '../resources/audio-bin.js';
 
 type Tab = 'characters' | 'backgrounds' | 'cgs' | 'audios';
-
-/** 音频导入队列候选（预览 + 勾选 + 一次性提交）。 */
-interface PendingResource {
-  readonly id: string;
-  readonly name: string;
-  readonly dataUrl: string;
-  checked: boolean;
-}
 
 function intOrNull(value: string): number | null {
   if (value.trim() === '') {
@@ -141,6 +133,9 @@ function updateAudio(r: AudioResource, patch: {
   return next;
 }
 
+/** 表情悬停预览：body 立绘显示宽度（表情叠加位置按 bodyWidth 等比缩放）。 */
+const FACE_PREVIEW_W = 320;
+
 /** 角色统计卡片（列表视图）：缩略图 + 名称 + 统计数字，点击进入详情。 */
 function CharacterStatCard({ r, onOpen }: { readonly r: CharacterResource; readonly onOpen: () => void }) {
   const poses = r.poses ?? [];
@@ -156,7 +151,7 @@ function CharacterStatCard({ r, onOpen }: { readonly r: CharacterResource; reado
     <button type="button" className="character-stat" onClick={onOpen}>
       <span className="character-stat__thumb">
         {r.image ? (
-          <img src={r.image} alt={r.name} />
+          <img src={assetUrl(r.image)} alt={r.name} />
         ) : (
           <span className="resource-card__avatar" style={avatarStyle(r.name)}>
             {r.name.trim().slice(0, 1) || '?'}
@@ -164,10 +159,7 @@ function CharacterStatCard({ r, onOpen }: { readonly r: CharacterResource; reado
         )}
       </span>
       <span className="character-stat__body">
-        <span className="character-stat__name">
-          {r.builtin && <span className="resource-card__badge">内置</span>}
-          {r.name}
-        </span>
+        <span className="character-stat__name">{r.name}</span>
         <span className="character-stat__stats">{stats.join(' · ')}</span>
       </span>
       <span className="character-stat__arrow">›</span>
@@ -182,6 +174,12 @@ function CharacterDetail({ r, store, onBack }: {
   readonly onBack: () => void;
 }) {
   const poses = r.poses ?? [];
+  const [facePreview, setFacePreview] = useState<{
+    readonly p: CharacterPose;
+    readonly face: CharacterFace;
+    readonly x: number;
+    readonly y: number;
+  } | null>(null);
   const setPose = (i: number, patch: Partial<CharacterPose>): void => {
     const next = poses.map((q, j) => (j === i ? { ...q, ...patch } : q));
     store.dispatch(editCharacter(r.id, updateCharacter(r, { poses: next })));
@@ -203,7 +201,6 @@ function CharacterDetail({ r, store, onBack }: {
         <button type="button" className="btn btn--secondary" onClick={onBack}>← 返回</button>
         <div className="character-detail__identity">
           <h2 className="character-detail__title">{r.name}</h2>
-          {r.builtin && <span className="resource-card__badge">内置</span>}
         </div>
       </header>
 
@@ -211,7 +208,7 @@ function CharacterDetail({ r, store, onBack }: {
         <section className="detail-section detail-section--preview">
           <div className="character-detail__stage">
             {r.image ? (
-              <img className="character-detail__img" src={r.image} alt={r.name} />
+              <img className="character-detail__img" src={assetUrl(r.image)} alt={r.name} />
             ) : (
               <span className="character-detail__stage-empty">暂无立绘</span>
             )}
@@ -291,7 +288,7 @@ function CharacterDetail({ r, store, onBack }: {
             {poses.map((p, i) => (
               <div className="pose-tile" key={i}>
                 {p.image ? (
-                  <img className="pose-tile__img" src={p.image} alt={`${r.name} 姿势${p.pose}/服装${p.costume}`} />
+                  <img className="pose-tile__img" src={assetUrl(p.image)} alt={`${r.name} 姿势${p.pose}/服装${p.costume}`} />
                 ) : (
                   <span className="pose-tile__empty">无图</span>
                 )}
@@ -311,8 +308,17 @@ function CharacterDetail({ r, store, onBack }: {
                       <span className="pose-tile__faces-title">表情</span>
                       <div className="face-thumbs">
                         {p.faces.map((f) => (
-                          <span className="face-thumb" key={f.face} title={`表情 ${f.face}`}>
-                            <img src={f.image} alt={`表情 ${f.face}`} />
+                          <span
+                            className="face-thumb"
+                            key={f.face}
+                            title={`表情 ${f.face}`}
+                            onMouseEnter={(e) => setFacePreview({ p, face: f, x: e.clientX, y: e.clientY })}
+                            onMouseMove={(e) =>
+                              setFacePreview((prev) => (prev ? { ...prev, x: e.clientX, y: e.clientY } : prev))
+                            }
+                            onMouseLeave={() => setFacePreview(null)}
+                          >
+                            <img src={assetUrl(f.image)} alt={`表情 ${f.face}`} />
                             <span className="face-thumb__num">{f.face}</span>
                           </span>
                         ))}
@@ -325,6 +331,51 @@ function CharacterDetail({ r, store, onBack }: {
           </div>
         )}
       </section>
+
+      {facePreview && (() => {
+        const p = facePreview.p;
+        const bodyW = p.bodyWidth ?? 0;
+        const bodyH = p.bodyHeight ?? 0;
+        const pad = 16;
+        const maxW = Math.min(FACE_PREVIEW_W, window.innerWidth - pad * 2);
+        let previewW = maxW;
+        if (bodyW > 0 && bodyH > 0) {
+          const maxH = window.innerHeight - pad * 2;
+          if (previewW * (bodyH / bodyW) > maxH) {
+            previewW = maxH / (bodyH / bodyW);
+          }
+        }
+        const sx = bodyW > 0 ? previewW / bodyW : 1;
+        const previewH = bodyH > 0 ? previewW * (bodyH / bodyW) : previewW;
+        let left = facePreview.x + 16;
+        let top = facePreview.y + 16;
+        if (left + previewW + pad > window.innerWidth - 8) {
+          left = facePreview.x - previewW - pad - 16;
+        }
+        if (top + previewH + pad > window.innerHeight - 8) {
+          top = Math.max(8, window.innerHeight - previewH - pad - 8);
+        }
+        return (
+          <div className="face-preview" style={{ left, top }}>
+            <div className="face-preview__stage" style={{ width: previewW }}>
+              {p.image ? (
+                <img className="face-preview__body" src={assetUrl(p.image)} alt="" style={{ width: previewW }} />
+              ) : null}
+              <img
+                className="face-preview__face"
+                src={assetUrl(facePreview.face.image)}
+                alt={`表情 ${facePreview.face.face}`}
+                style={{
+                  left: (p.faceX ?? 0) * sx,
+                  top: (p.faceY ?? 0) * sx,
+                  width: (p.faceWidth ?? 0) * sx,
+                  height: (p.faceHeight ?? 0) * sx,
+                }}
+              />
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -337,62 +388,10 @@ export interface ResourceManagerProps {
 
 export function ResourceManager({ state, store, onClose }: ResourceManagerProps) {
   const [tab, setTab] = useState<Tab>('characters');
-  const [queue, setQueue] = useState<PendingResource[]>([]);
   const [importingCount, setImportingCount] = useState(0);
   const [openCharId, setOpenCharId] = useState<string | null>(null);
   const [importProgress, setImportProgress] = useState<{ readonly done: number; readonly total: number } | null>(null);
-  const queueSeq = useRef(0);
   const importing = importingCount > 0;
-
-  const enqueue = (items: Omit<PendingResource, 'id' | 'checked'>[]): void => {
-    if (items.length === 0) {
-      return;
-    }
-    setQueue((prev) => [
-      ...prev,
-      ...items.map((it) => ({ ...it, id: `q${queueSeq.current++}`, checked: true })),
-    ]);
-  };
-
-  /** 批量导入音频：读文件 → data URL，进导入队列。 */
-  const importAudios = async (files: File[]): Promise<void> => {
-    setImportingCount((c) => c + 1);
-    try {
-      const items: Omit<PendingResource, 'id' | 'checked'>[] = [];
-      for (const file of files) {
-        const url = await readFileAsDataUrl(file);
-        items.push({ name: file.name.replace(/\.[^.]+$/, ''), dataUrl: url });
-      }
-      enqueue(items);
-    } finally {
-      setImportingCount((c) => c - 1);
-    }
-  };
-
-  /** 一次性提交导入队列（勾选项 → 一次 undo 步）。 */
-  const commitQueue = (): void => {
-    const selected = queue.filter((q) => q.checked);
-    if (selected.length === 0) {
-      return;
-    }
-    const maxByType = new Map<string, number>();
-    for (const a of state.resources.audios) {
-      maxByType.set(a.type, Math.max(maxByType.get(a.type) ?? 0, a.number));
-    }
-    let next = maxByType.get('bgm') ?? 0;
-    store.dispatch(addAudios(selected.map((q) => ({ type: 'bgm' as const, number: ++next, label: q.name, src: q.dataUrl }))));
-    setQueue((prev) => prev.filter((q) => !selected.includes(q)));
-  };
-
-  const toggleQueueItem = (id: string): void => {
-    setQueue((prev) => prev.map((q) => (q.id === id ? { ...q, checked: !q.checked } : q)));
-  };
-
-  /** 拖拽导入：仅音频（角色立绘只通过「导入内置立绘文件」进入）。 */
-  const onDropFiles = (files: File[]): void => {
-    const audios = files.filter((f) => f.type.startsWith('audio/'));
-    void importAudios(audios);
-  };
 
   /** 导入内置立绘文件（graph_bs.bin）：解码 → 按角色归类 → 批量填充内置角色立绘（一次 undo）。 */
   const importBuiltinSprites = async (file: File): Promise<void> => {
@@ -528,49 +527,13 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
         </button>
       </div>
 
-      <div
-        className="workspace__body"
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => {
-          e.preventDefault();
-          const files = Array.from(e.dataTransfer.files);
-          if (files.length > 0) {
-            onDropFiles(files);
-          }
-        }}
-      >
+      <div className="workspace__body">
           {importing && (
             <div className="import-progress" role="status" aria-label="正在导入">
               <div className="import-progress__bar" />
               <span className="import-progress__text">
                 {importProgress ? `正在导入… ${importProgress.done}/${importProgress.total}` : '正在导入…'}
               </span>
-            </div>
-          )}
-          {queue.length > 0 && (
-            <div className="import-queue">
-              <div className="import-queue__head">
-                <span className="import-queue__title">
-                  导入队列（{queue.filter((q) => q.checked).length}/{queue.length}）
-                </span>
-                <div className="import-queue__actions">
-                  <button type="button" className="btn btn--secondary" disabled={importing} onClick={() => setQueue([])}>
-                    清空
-                  </button>
-                  <button type="button" className="btn btn--primary" disabled={importing} onClick={commitQueue}>
-                    确认导入
-                  </button>
-                </div>
-              </div>
-              <div className="import-queue__grid">
-                {queue.map((q) => (
-                  <label className="import-queue__item" key={q.id}>
-                    <input type="checkbox" checked={q.checked} onChange={() => toggleQueueItem(q.id)} />
-                    <span className="import-queue__badge">音频</span>
-                    <span className="import-queue__name">{q.name}</span>
-                  </label>
-                ))}
-              </div>
             </div>
           )}
           {tab === 'characters' && (
@@ -591,12 +554,12 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
           {tab === 'backgrounds' && (
             <div className="resource-grid">
               {state.resources.backgrounds.length === 0 && (
-                <div className="resource-empty">还没有背景，点击下方「添加背景」。</div>
+                <div className="resource-empty">还没有背景，点击下方「导入内置背景文件」。</div>
               )}
               {state.resources.backgrounds.map((r) => (
                 <article className="resource-card" key={r.id}>
                   <div className="resource-card__thumb">
-                    {r.image ? <img src={r.thumb ?? r.image} alt={r.name} loading="lazy" decoding="async" /> : <span>{r.name}</span>}
+                    {r.image ? <img src={assetUrl(r.thumb ?? r.image)} alt={r.name} loading="lazy" decoding="async" /> : <span>{r.name}</span>}
                   </div>
                   <header className="resource-card__head">
                     <input className="resource-card__name" value={r.name} onChange={(e) => store.dispatch(renameBackground(r.id, e.target.value))} />
@@ -640,7 +603,7 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
               {state.resources.cgs.map((r) => (
                 <article className="resource-card" key={r.id}>
                   <div className="resource-card__thumb">
-                    {r.image ? <img src={r.thumb ?? r.image} alt={r.name} loading="lazy" decoding="async" /> : <span>{r.name}</span>}
+                    {r.image ? <img src={assetUrl(r.thumb ?? r.image)} alt={r.name} loading="lazy" decoding="async" /> : <span>{r.name}</span>}
                   </div>
                   <header className="resource-card__head">
                     <span className="resource-card__name">{r.name}</span>
@@ -654,7 +617,7 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
           {tab === 'audios' && (
             <div className="resource-grid resource-grid--audio">
               {state.resources.audios.length === 0 && (
-                <div className="resource-empty">还没有音频，点击下方「添加音频」。</div>
+                <div className="resource-empty">还没有音频，点击下方「导入内置音频文件」。</div>
               )}
               {state.resources.audios.map((r) => (
                 <article className="resource-card resource-card--audio" key={r.id}>
@@ -663,7 +626,7 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
                     <input className="resource-card__name" value={r.label} placeholder="标签（如片头曲）" onChange={(e) => store.dispatch(editAudio(r.id, updateAudio(r, { label: e.target.value })))} />
                     <button type="button" className="resource-card__remove" aria-label="删除音频" onClick={() => store.dispatch(removeAudio(r.id))}>×</button>
                   </header>
-                  {r.src && <audio className="resource-card__player" controls src={r.src} />}
+                  {r.src && <audio className="resource-card__player" controls src={assetUrl(r.src)} />}
                   <label className="resource-card__import">
                     {r.src ? '更换音频' : '导入音频'}
                     <input
@@ -718,26 +681,21 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
             </label>
           )}
           {tab === 'backgrounds' && (
-            <>
-              <button type="button" className="btn btn--secondary" onClick={() => store.dispatch(addBackground({ name: '新背景', variant: 0, bgFn: null }))}>
-                + 添加背景
-              </button>
-              <label className="btn btn--secondary">
-                导入内置背景文件
-                <input
-                  type="file"
-                  accept=".bin"
-                  hidden
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      void importBuiltinBackgrounds(file);
-                    }
-                    e.target.value = '';
-                  }}
-                />
-              </label>
-            </>
+            <label className="btn btn--secondary">
+              导入内置背景文件
+              <input
+                type="file"
+                accept=".bin"
+                hidden
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    void importBuiltinBackgrounds(file);
+                  }
+                  e.target.value = '';
+                }}
+              />
+            </label>
           )}
           {tab === 'cgs' && (
             <label className="btn btn--secondary">
@@ -758,40 +716,21 @@ export function ResourceManager({ state, store, onClose }: ResourceManagerProps)
             </label>
           )}
           {tab === 'audios' && (
-            <>
-              <button type="button" className="btn btn--secondary" onClick={() => store.dispatch(addAudio({ type: 'bgm', number: 0, label: '' }))}>
-                + 添加音频
-              </button>
-              <label className="btn btn--secondary">
-                导入内置音频文件
-                <input
-                  type="file"
-                  accept=".bin"
-                  hidden
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      void importBuiltinAudios(file);
-                    }
-                    e.target.value = '';
-                  }}
-                />
-              </label>
-              <label className="btn btn--secondary">
-                批量导入音频
-                <input
-                  type="file"
-                  accept="audio/*"
-                  multiple
-                  hidden
-                  onChange={(e) => {
-                    const files = Array.from(e.target.files ?? []);
-                    void importAudios(files);
-                    e.target.value = '';
-                  }}
-                />
-              </label>
-            </>
+            <label className="btn btn--secondary">
+              导入内置音频文件
+              <input
+                type="file"
+                accept=".bin"
+                hidden
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    void importBuiltinAudios(file);
+                  }
+                  e.target.value = '';
+                }}
+              />
+            </label>
           )}
         </footer>
     </div>

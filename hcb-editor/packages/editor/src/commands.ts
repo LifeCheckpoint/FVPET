@@ -46,7 +46,8 @@ export type Command =
   | { readonly kind: 'add_cg'; readonly cg: Omit<CgResource, 'id'> }
   | { readonly kind: 'add_cgs'; readonly cgs: readonly Omit<CgResource, 'id'>[] }
   | { readonly kind: 'remove_cg'; readonly id: string }
-  | { readonly kind: 'edit_cg'; readonly id: string; readonly cg: CgResource };
+  | { readonly kind: 'edit_cg'; readonly id: string; readonly cg: CgResource }
+  | { readonly kind: 'replace_asset_refs'; readonly refs: Readonly<Record<string, string>> };
 
 export interface ApplyResult {
   readonly next: EditorState;
@@ -370,6 +371,47 @@ export function applyCommand(state: EditorState, cmd: Command): ApplyResult {
         }
         break;
       }
+      case 'replace_asset_refs': {
+        const remap = (value: string | undefined): string | undefined =>
+          value !== undefined ? (cmd.refs[value] ?? value) : value;
+        for (const c of draft.resources.characters) {
+          if (c.image !== undefined) {
+            c.image = remap(c.image)!;
+          }
+          if (c.poses) {
+            for (const p of c.poses) {
+              if (p.image !== undefined) {
+                p.image = remap(p.image)!;
+              }
+              for (const f of p.faces) {
+                if (f.image !== undefined) {
+                  f.image = remap(f.image)!;
+                }
+              }
+            }
+          }
+        }
+        for (const b of draft.resources.backgrounds) {
+          if (b.image !== undefined) {
+            b.image = remap(b.image)!;
+          }
+          if (b.thumb !== undefined) {
+            b.thumb = remap(b.thumb)!;
+          }
+        }
+        for (const c of draft.resources.cgs) {
+          c.image = remap(c.image)!;
+          if (c.thumb !== undefined) {
+            c.thumb = remap(c.thumb)!;
+          }
+        }
+        for (const a of draft.resources.audios) {
+          if (a.src !== undefined) {
+            a.src = remap(a.src)!;
+          }
+        }
+        break;
+      }
     }
   });
 
@@ -552,4 +594,12 @@ export function removeCg(id: string): Command {
 
 export function editCg(id: string, cg: CgResource): Command {
   return { kind: 'edit_cg', id, cg };
+}
+
+/**
+ * 保存落盘成功后，把内存态中仍为 data URL 的资源字段替换为相对路径引用
+ * （作为一次 undo 步，撤销可回退到 data URL 状态）。
+ */
+export function replaceAssetRefs(refs: Readonly<Record<string, string>>): Command {
+  return { kind: 'replace_asset_refs', refs };
 }

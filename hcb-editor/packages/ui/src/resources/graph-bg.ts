@@ -11,10 +11,11 @@ import type { BackgroundResource, CgResource } from '@hcb-editor/editor';
 import { parseBinArchive } from './bin.js';
 import { decodeHzc1, rgbaToPngDataUrl } from './hzc.js';
 
-/** 底座背景信息（bg_<编号> → 函数地址 / 引擎编号；引擎编号可缺省）。 */
+/** 底座背景信息（bg_<组号> → 预处理 base.chb 专属函数）。 */
 export interface BaseBackgroundInfo {
   readonly fn: number;
   readonly number?: number;
+  readonly args?: number;
 }
 
 /** 解析 `BG<编号>_<变体>[b]`；非该形式返回 null。 */
@@ -83,7 +84,7 @@ export async function importGraphBgBytes(
       const key = `bg_${bg.num}`;
       const base = baseBackgrounds[key];
       const name = bg.variant === 0 ? key : `${key}_${bg.variant}`;
-      backgrounds.push({ name, variant: base?.number ?? bg.num, bgFn: base?.fn ?? null, image: result.image, thumb: result.thumb });
+      backgrounds.push({ name, variant: bg.variant, bgFn: base?.fn ?? null, image: result.image, thumb: result.thumb });
       decoded += 1;
     }
     done += 1;

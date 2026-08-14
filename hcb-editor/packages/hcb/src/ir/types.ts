@@ -54,11 +54,17 @@ export const IrNode = z.discriminatedUnion('kind', [
     transition: z.enum(['cross', 'fade', 'none']).optional(),
   }),
   z.object({
-    kind: z.literal('cgset'), // 事件 CG 显示（字符串名 + 图元槽位 + 显示参数）
+    kind: z.literal('cgset'), // 事件 CG 显示（base.chb 中每个 CG 对应一个 6 参数专属函数）
     name: z.string(), // CG 资源名（大写，如 ASAHI_E011A1）
-    slot: z.number(), // 图元槽位（push_i16）
-    mode: z.number(), // 显示模式（push_i8）
-    flag: z.number(), // 标志（push_i8）
+    /** 旧版共享函数模型遗留字段：为工程向后兼容保留，新编译器不再据此调用 0x373a5。 */
+    slot: z.number(),
+    mode: z.number(),
+    flag: z.number(),
+    /** 自定义画面参数；任一缺省时使用 CG 专属函数内置设定。 */
+    x: z.number().optional(),
+    y: z.number().optional(),
+    scale: z.number().optional(), // 1 = 原始缩放；底层 zoom = 3000 - scale*1000
+    time: z.number().optional(), // 转场时间（毫秒），默认 0
   }),
   z.object({
     kind: z.literal('bsset'),
@@ -67,6 +73,8 @@ export const IrNode = z.discriminatedUnion('kind', [
     costume: z.number(), // 服装
     expression: z.number(), // 表情
     layout: z.number(), // 构图状态 0/-1/1/2
+    loc: z.enum(['l', 'm', 'r']).default('m'), // 预设站位（l→2, m→1, r→0）
+    z: z.number().default(0), // 立绘 z 坐标（i16）
     position: z.object({ x: z.number(), y: z.number() }),
     layer: z.number(),
   }),
@@ -80,6 +88,8 @@ export const IrNode = z.discriminatedUnion('kind', [
     type: z.enum(['bgm', 'voice', 'se']),
     channelOrNum: z.number(),
     loop: z.boolean().optional(),
+    action: z.enum(['play', 'stop']).optional(), // 播放（默认）/ 停止
+    time: z.number().optional(), // loop / end 的时长（毫秒）
   }),
   z.object({
     kind: z.literal('branch'),
@@ -94,6 +104,9 @@ export const IrNode = z.discriminatedUnion('kind', [
     kind: z.literal('msgset'),
     position: z.enum(['middle', 'normal', 'boxin', 'boxout']), // 对话栏位置
   }),
+  z.object({ kind: z.literal('eyecatch') }), // 转场（eyecatch）
+  z.object({ kind: z.literal('bsfade') }), // 消除当前立绘
+  z.object({ kind: z.literal('white') }), // 背景调白 / 白屏特效
   z.object({
     kind: z.literal('raw'), // 逃生舱：模板覆盖不到的 5%
     bytes: z.instanceof(Uint8Array),

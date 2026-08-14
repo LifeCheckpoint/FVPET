@@ -5,11 +5,17 @@
 
 import { z } from 'zod';
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 export const RfvpRequest = z.discriminatedUnion('op', [
   z.object({ op: z.literal('handshake'), protocolVersion: z.number() }),
-  z.object({ op: z.literal('load'), hcbPath: z.string(), labels: z.record(z.number()).optional() }),
+  z.object({
+    op: z.literal('load'),
+    hcbPath: z.string(),
+    nls: z.enum(['sjis', 'gbk', 'utf8']).optional(),
+    scriptEntry: z.number().int().nonnegative(),
+    labels: z.record(z.number()).optional(),
+  }),
   z.object({ op: z.literal('jump'), label: z.string() }),
   z.object({ op: z.literal('step') }),
   z.object({ op: z.literal('advance') }), // 推进到下一个文本

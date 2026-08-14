@@ -635,7 +635,8 @@ export const sakuraMoyuBaseData = {
       "speakFn": 1946
     },
     "ソル": {
-      "speakFn": 2162
+      "speakFn": 2162,
+      "alias": { "一磨": 10, "遠矢": 100 }
     },
     "ナハト": {
       "speakFn": 2512
@@ -695,7 +696,9 @@ export const sakuraMoyuBaseData = {
       "speakFn": 6268
     },
     "大雅": {
-      "speakFn": 6424
+      "speakFn": 6424,
+      "alias": { "奏大雅": 10 },
+      "extraArgs": 3
     }
   },
   "backgrounds": {
@@ -1691,5 +1694,7 @@ export const sakuraMoyuBaseData = {
   "globals": {
     "optionResult": 103,
     "speakerStyle": 227
-  }
+  },
+  "mainOffset": 569031,
+  "nls": "gbk"
 } as const;

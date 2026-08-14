@@ -23,7 +23,7 @@ export interface RfvpLoadResult {
 type RawEvent = Record<string, unknown>;
 
 /** 与 [`protocol.ts`](hcb-editor/packages/rfvp/src/protocol.ts:8) 保持一致。 */
-const PROTOCOL_VERSION = 1;
+const PROTOCOL_VERSION = 2;
 const LOAD_TIMEOUT_MS = 15_000;
 const HANDSHAKE_TIMEOUT_MS = 10_000;
 
@@ -110,6 +110,7 @@ export class RfvpProcessManager {
   async load(
     bytes: Uint8Array,
     nls: string,
+    scriptEntry: number,
     labels?: Readonly<Record<string, number>>,
   ): Promise<RfvpLoadResult> {
     await this.start();
@@ -126,7 +127,7 @@ export class RfvpProcessManager {
         this.clearLoadWaiter(new Error('引擎装载超时'));
       }, LOAD_TIMEOUT_MS);
 
-      this.send({ op: 'load', hcbPath: file, nls, labels: labels ?? {} });
+      this.send({ op: 'load', hcbPath: file, nls, scriptEntry, labels: labels ?? {} });
     });
   }
 

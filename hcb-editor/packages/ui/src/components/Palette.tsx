@@ -27,10 +27,7 @@ export function Palette({ onAdd, onOpenResources }: PaletteProps) {
             <span className="palette__item-icon">
               <KindIcon kind={meta.kind} />
             </span>
-            <span className="palette__item-body">
-              <span className="palette__item-label">{meta.label}</span>
-              <span className="palette__item-hint">{meta.hint}</span>
-            </span>
+            <span className="palette__item-label">{meta.label}</span>
           </button>
         ))}
       </div>
@@ -38,7 +35,6 @@ export function Palette({ onAdd, onOpenResources }: PaletteProps) {
       <div className="palette__section-title">资源</div>
       <button type="button" className="palette__resource-btn" onClick={onOpenResources}>
         <span className="palette__resource-label">资源管理器</span>
-        <span className="palette__resource-hint">角色 / 背景 / 音频</span>
       </button>
     </aside>
   );

@@ -43,8 +43,8 @@ export function generateSpeakFunctionBytes(
   let stylePatched = false;
 
   const patched = insts.map((i, idx) => {
-    // 名字替换：名栏显示串（去全角空格后与模板角色名一致）。
-    if (!namePatched && i.mnemonic === 'push_string' && i.args.kind === 'string' && stripSpace(i.args.text) === templateName) {
+    // 名字替换：名栏显示串（去全角空格后包含模板角色名，容忍底座加的前缀如「？クロ」）。
+    if (!namePatched && i.mnemonic === 'push_string' && i.args.kind === 'string' && stripSpace(i.args.text).includes(templateName)) {
       namePatched = true;
       const text = i.args.text.replace(templateName, newName);
       return {
@@ -93,9 +93,10 @@ export function generateSpeakFunctions(
   newNames: readonly string[],
   baseCharacterCount: number,
   nls: Nls,
+  mainOffset: number,
 ): { readonly bytes: Uint8Array; readonly addresses: ReadonlyMap<string, number> } {
   const decoded = decodeBaseCached(baseData, nls);
-  const baseCodeEnd = decoded.sysdesc.sysDescOffset;
+  const baseCodeEnd = mainOffset;
 
   // 逐函数按绝对地址生成：startAddr 只影响体内 jmp/jz 目标值，不影响字节长度。
   const chunks: Uint8Array[] = [];

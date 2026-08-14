@@ -15,11 +15,13 @@ import {
   audioTemplate,
   bgsetTemplate,
   branchTemplate,
+  bsfadeTemplate,
   bssetTemplate,
   callTemplate,
   cgsetTemplate,
   controlTemplate,
   diaTemplate,
+  eyecatchTemplate,
   inputTemplate,
   jumpTemplate,
   measureCoverage,
@@ -29,6 +31,7 @@ import {
   stageTemplate,
   threadTemplate,
   waitTemplate,
+  whiteTemplate,
 } from '@hcb-editor/compiler/templates';
 import type { GameTables } from '@hcb-editor/compiler/templates';
 
@@ -444,6 +447,9 @@ function cmdCoverage(args: CliArgs): void {
     controlTemplate,
     callTemplate,
     jumpTemplate,
+    eyecatchTemplate,
+    bsfadeTemplate,
+    whiteTemplate,
   ];
   const coverage = measureCoverage(reachableInsts, templates);
   const hits: Record<string, number> = {};

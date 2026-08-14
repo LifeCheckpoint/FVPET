@@ -60,7 +60,8 @@ describe('template golden', () => {
         { kind: 'jump', target: 'loop' },
       ],
     };
-    const { labels } = compileProjectDetailed(ir, 'sjis');
+    const { scriptEntry, labels } = compileProjectDetailed(ir, 'sjis');
+    expect(scriptEntry).toBe(4);
     // 入口函数 prologue init_stack 占 3 字节，第一个 label 位于其后（4 + 3 = 7）。
     expect(labels.get('start')).toBe(7);
     expect(labels.get('loop')).toBeGreaterThan(7);

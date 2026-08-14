@@ -17,8 +17,9 @@ const rfvpApi = {
   load: (
     bytes: Uint8Array,
     nls: string,
+    scriptEntry: number,
     labels?: Readonly<Record<string, number>>,
-  ): Promise<RfvpLoadResult> => ipcRenderer.invoke('rfvp:load', { bytes, nls, labels }),
+  ): Promise<RfvpLoadResult> => ipcRenderer.invoke('rfvp:load', { bytes, nls, scriptEntry, labels }),
   jump: (label: string): Promise<void> => ipcRenderer.invoke('rfvp:jump', { label }),
   advance: (): Promise<void> => ipcRenderer.invoke('rfvp:advance'),
   step: (): Promise<void> => ipcRenderer.invoke('rfvp:step'),
@@ -55,7 +56,7 @@ const fileDialogApi = {
     ipcRenderer.invoke('file-dialog:save-text', { defaultName, content }),
   saveBinaryFile: (defaultName: string, content: Uint8Array): Promise<string | null> =>
     ipcRenderer.invoke('file-dialog:save-binary', { defaultName, content }),
-  openTextFile: (): Promise<{ name: string; text: string } | null> =>
+  openTextFile: (): Promise<{ name: string; text: string; path: string } | null> =>
     ipcRenderer.invoke('file-dialog:open-text'),
 };
 
@@ -68,14 +69,18 @@ const projectDirApi = {
   save: (
     defaultName: string,
     projectJson: string,
-    assets: ProjectDirAsset[],
-  ): Promise<string | null> => ipcRenderer.invoke('project-dir:save', { defaultName, projectJson, assets }),
+    dirtyAssets: ProjectDirAsset[],
+    referencedPaths: string[],
+  ): Promise<string | null> =>
+    ipcRenderer.invoke('project-dir:save', { defaultName, projectJson, dirtyAssets, referencedPaths }),
   saveAs: (
     dir: string,
     projectJson: string,
-    assets: ProjectDirAsset[],
-  ): Promise<string> => ipcRenderer.invoke('project-dir:save-as', { dir, projectJson, assets }),
-  open: (): Promise<{ projectJson: string; assets: ProjectDirAsset[] } | null> =>
+    dirtyAssets: ProjectDirAsset[],
+    referencedPaths: string[],
+  ): Promise<string> =>
+    ipcRenderer.invoke('project-dir:save-as', { dir, projectJson, dirtyAssets, referencedPaths }),
+  open: (): Promise<{ projectJson: string; dir: string } | null> =>
     ipcRenderer.invoke('project-dir:open'),
 };
 

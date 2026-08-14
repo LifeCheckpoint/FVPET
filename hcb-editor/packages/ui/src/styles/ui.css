@@ -90,6 +90,7 @@
 }
 
 .app__body {
+  position: relative;
   display: flex;
   flex: 1;
   min-height: 0;
@@ -111,13 +112,21 @@
 
 /* ---------------------------------------------------------------- 左侧 */
 .palette {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 20;
+  width: 248px;
+  max-height: calc(100% - 24px);
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 14px 12px;
+  gap: 8px;
+  padding: 10px;
   overflow-y: auto;
   background: var(--bg-surface);
-  border-right: 1px solid var(--border-default);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
 .palette__section-title {
@@ -130,16 +139,16 @@
 }
 
 .palette__grid {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px;
 }
 
 .palette__item {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 8px 9px;
+  gap: 6px;
+  padding: 6px 8px;
   text-align: left;
   background: transparent;
   border: 1px solid var(--border-default);
@@ -1623,8 +1632,8 @@
 
 .character-stat__thumb {
   flex: none;
-  width: 44px;
-  height: 44px;
+  width: 48px;
+  height: 76px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1638,6 +1647,7 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center top;
 }
 
 .character-stat__thumb .resource-card__avatar {
@@ -2551,4 +2561,72 @@
   flex: none;
   width: 240px;
   height: 30px;
+}
+
+/* ---------------------------------------------------------------- 空白工程占位 */
+.app__empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+
+.app__empty-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 40px 48px;
+  background: var(--bg-surface);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+
+.app__empty-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.app__empty-hint {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.app__empty-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+/* ---------------------------------------------------------------- 表情悬停预览 */
+.face-preview {
+  position: fixed;
+  z-index: 1000;
+  pointer-events: none;
+  padding: 8px;
+  background: rgba(11, 13, 16, 0.92);
+  border: 1px solid var(--border-accent, #3a4556);
+  border-radius: var(--radius-md);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+.face-preview__stage {
+  position: relative;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #0b0d10;
+}
+
+.face-preview__body {
+  display: block;
+  height: auto;
+}
+
+.face-preview__face {
+  position: absolute;
+  display: block;
 }

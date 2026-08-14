@@ -10,7 +10,7 @@ import type { NlsPreference } from '../preferences/preferences.js';
 export interface NewProjectWizardProps {
   readonly store: EditorStore;
   readonly defaultNls: NlsPreference;
-  readonly onClose: () => void;
+  readonly onClose: (created?: boolean) => void;
 }
 
 export function NewProjectWizard({ store, defaultNls, onClose }: NewProjectWizardProps) {
@@ -34,12 +34,12 @@ export function NewProjectWizard({ store, defaultNls, onClose }: NewProjectWizar
       ...project,
       resources: { ...project.resources, characters: builtinCharacters },
     });
-    onClose();
+    onClose(true);
   };
 
   return (
     <div className="modal" role="dialog" aria-modal="true" aria-label="新建工程">
-      <div className="modal__backdrop" onClick={onClose} />
+      <div className="modal__backdrop" onClick={() => onClose()} />
       <div className="modal__panel">
         <header className="modal__header">
           <span className="modal__title">新建工程</span>
@@ -68,7 +68,7 @@ export function NewProjectWizard({ store, defaultNls, onClose }: NewProjectWizar
         </div>
 
         <footer className="modal__footer">
-          <button type="button" className="btn btn--secondary" onClick={onClose}>取消</button>
+          <button type="button" className="btn btn--secondary" onClick={() => onClose()}>取消</button>
           <button type="button" className="btn btn--primary" onClick={create}>创建</button>
         </footer>
       </div>

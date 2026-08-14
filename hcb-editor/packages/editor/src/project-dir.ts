@@ -1,45 +1,57 @@
 /**
- * 工程目录序列化：工程 = project.json + assets/ 目录（资源文件落盘）。
- * - serializeProjectToDir：把资源里的 data URL 外置为 assets 文件，project.json 里存相对路径。
- * - deserializeProjectFromDir：读回 assets，把相对路径内联为 data URL（供预览直接使用）。
- * 单文件 JSON（serializeProject/deserializeProject）仍保留，作为浏览器兜底。
+ * 工程目录序列化：工程 = project.json + assets/ 目录（资源文件落盘，内容寻址）。
+ * - planProjectSave：把尚未落盘的 data URL 提取为 dirtyAssets，已落盘引用直接保留；
+ *   返回 projectJson + 增量资产 + 被引用路径集合（主进程 GC 用）+ dataUrl→path 映射。
+ * - deserializeProjectFromDir：只解析 project.json（资源保持相对路径引用，不内联二进制）。
+ * - parseDataUrl / toDataUrl：浏览器单文件降级模式仍使用（分块 base64，避免大字符串卡顿）。
  */
 
 import { deserializeProject, serializeProject } from './project-file.js';
+import { isDataUrl } from './resources.js';
 import type { EditorState } from './state.js';
 
 export interface ProjectAsset {
-  /** 相对路径，如 assets/res-0.png */
+  /** 相对路径，如 assets/<hash>-<len>.png */
   readonly path: string;
   readonly bytes: Uint8Array;
 }
 
-export interface ProjectDirData {
+export interface ProjectSavePlan {
   readonly projectJson: string;
-  readonly assets: readonly ProjectAsset[];
+  /** 需要写入磁盘的新资源（尚未落盘的 data URL）。 */
+  readonly dirtyAssets: readonly ProjectAsset[];
+  /** 本次保存后仍被引用的资源相对路径（GC 白名单）。 */
+  readonly referencedPaths: ReadonlySet<string>;
+  /** data URL → 相对路径引用（保存成功后替换内存态）。 */
+  readonly refs: Readonly<Record<string, string>>;
 }
 
-function parseDataUrl(url: string): { mime: string; bytes: Uint8Array } | null {
+/** 解析 data URL 为字节。`Uint8Array.from` 走 C++ 级迭代，远快于逐字节循环。 */
+export function parseDataUrl(url: string): { mime: string; bytes: Uint8Array } | null {
   const m = /^data:([^;,]+);base64,(.+)$/.exec(url);
   if (!m) {
     return null;
   }
   const mime = m[1]!;
-  const b64 = m[2]!;
-  const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) {
-    bytes[i] = binary.charCodeAt(i);
-  }
+  const binary = atob(m[2]!);
+  const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
   return { mime, bytes };
 }
 
-function toDataUrl(mime: string, bytes: Uint8Array): string {
+/** 分块 base64：避免超大字符串逐字节拼接与单次超大 fromCharCode 调用栈。 */
+const BASE64_CHUNK = 0x8000;
+
+function bytesToBase64(bytes: Uint8Array): string {
   let binary = '';
-  for (let i = 0; i < bytes.length; i += 1) {
-    binary += String.fromCharCode(bytes[i]!);
+  for (let i = 0; i < bytes.length; i += BASE64_CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + BASE64_CHUNK));
   }
-  return `data:${mime};base64,${btoa(binary)}`;
+  return btoa(binary);
+}
+
+/** 字节 → data URL（浏览器单文件降级模式用）。 */
+export function toDataUrl(mime: string, bytes: Uint8Array): string {
+  return `data:${mime};base64,${bytesToBase64(bytes)}`;
 }
 
 const MIME_BY_EXT: Readonly<Record<string, string>> = {
@@ -66,31 +78,75 @@ const EXT_BY_MIME: Readonly<Record<string, string>> = {
   'audio/webm': 'webm',
 };
 
-function extOfMime(mime: string): string {
+export function extOfMime(mime: string): string {
   return EXT_BY_MIME[mime] ?? 'bin';
 }
 
-function mimeOfPath(path: string): string {
+export function mimeOfPath(path: string): string {
   const ext = path.split('.').pop()?.toLowerCase() ?? '';
   return MIME_BY_EXT[ext] ?? 'application/octet-stream';
 }
 
-/** 把资源里的 data URL 外置为 assets 文件，project.json 里存相对路径。 */
-export function serializeProjectToDir(state: EditorState): ProjectDirData {
-  const assets: ProjectAsset[] = [];
-  let counter = 0;
+/**
+ * 内容哈希（双 64-bit 混合，混合内容长度）：生成稳定、内容寻址的文件名。
+ * 非加密哈希即可满足资源去重需求；配合文件名中的长度后缀，碰撞概率可忽略。
+ */
+function hashAssetBytes(bytes: Uint8Array): string {
+  let h1 = 0xdeadbeef ^ bytes.length;
+  let h2 = 0x41c6ce57 ^ bytes.length;
+  for (let i = 0; i < bytes.length; i += 1) {
+    const k = bytes[i]!;
+    h1 = Math.imul(h1 ^ k, 2654435761);
+    h2 = Math.imul(h2 ^ k, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
+  h1 = Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
+  h2 = Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  return (
+    (h1 >>> 0).toString(16).padStart(8, '0') +
+    (h2 >>> 0).toString(16).padStart(8, '0')
+  );
+}
+
+/**
+ * 规划一次目录保存：把尚未落盘的 data URL 提取为 dirtyAssets，
+ * 已落盘引用直接保留；产出引用化后的 projectJson + GC 白名单。
+ */
+export function planProjectSave(state: EditorState): ProjectSavePlan {
+  const dirtyAssets: ProjectAsset[] = [];
+  const urlToPath = new Map<string, string>();
+  const contentToPath = new Map<string, string>();
+  const referencedPaths = new Set<string>();
+  const refs: Record<string, string> = {};
 
   const externalize = (url: string | undefined): string | undefined => {
-    if (!url || !url.startsWith('data:')) {
+    if (url === undefined || url === '') {
       return url;
+    }
+    if (!isDataUrl(url)) {
+      referencedPaths.add(url);
+      return url;
+    }
+    const existing = urlToPath.get(url);
+    if (existing) {
+      return existing;
     }
     const parsed = parseDataUrl(url);
     if (!parsed) {
       return url;
     }
-    const path = `assets/res-${counter}.${extOfMime(parsed.mime)}`;
-    counter += 1;
-    assets.push({ path, bytes: parsed.bytes });
+    const digest = hashAssetBytes(parsed.bytes);
+    const key = `${parsed.bytes.length}:${digest}`;
+    let path = contentToPath.get(key);
+    if (!path) {
+      path = `assets/${digest}-${parsed.bytes.length}.${extOfMime(parsed.mime)}`;
+      contentToPath.set(key, path);
+      dirtyAssets.push({ path, bytes: parsed.bytes });
+    }
+    urlToPath.set(url, path);
+    refs[url] = path;
+    referencedPaths.add(path);
     return path;
   };
 
@@ -102,7 +158,7 @@ export function serializeProjectToDir(state: EditorState): ProjectDirData {
         return {
           ...c,
           ...(image !== undefined ? { image } : {}),
-          ...(c.poses !== undefined
+          ...(c.poses
             ? {
                 poses: c.poses.map((p) => ({
                   ...p,
@@ -129,60 +185,15 @@ export function serializeProjectToDir(state: EditorState): ProjectDirData {
     },
   };
 
-  return { projectJson: serializeProject(projectState), assets };
+  return {
+    projectJson: serializeProject(projectState),
+    dirtyAssets,
+    referencedPaths,
+    refs,
+  };
 }
 
-/** 读回 assets，把相对路径内联为 data URL（供预览直接使用）。 */
-export function deserializeProjectFromDir(
-  projectJson: string,
-  assets: readonly ProjectAsset[],
-): EditorState {
-  const byPath = new Map(assets.map((a) => [a.path, a]));
-  const state = deserializeProject(projectJson);
-
-  const inline = (path: string | undefined): string | undefined => {
-    if (!path || path.startsWith('data:')) {
-      return path;
-    }
-    const asset = byPath.get(path);
-    if (!asset) {
-      return path;
-    }
-    return toDataUrl(mimeOfPath(path), asset.bytes);
-  };
-
-  return {
-    ...state,
-    resources: {
-      characters: state.resources.characters.map((c) => {
-        const image = inline(c.image);
-        return {
-          ...c,
-          ...(image !== undefined ? { image } : {}),
-          ...(c.poses !== undefined
-            ? {
-                poses: c.poses.map((p) => ({
-                  ...p,
-                  image: inline(p.image) ?? p.image,
-                  faces: p.faces.map((f) => ({ ...f, image: inline(f.image) ?? f.image })),
-                })),
-              }
-            : {}),
-        };
-      }),
-      backgrounds: state.resources.backgrounds.map((b) => {
-        const image = inline(b.image);
-        const thumb = inline(b.thumb);
-        return { ...b, ...(image !== undefined ? { image } : {}), ...(thumb !== undefined ? { thumb } : {}) };
-      }),
-      cgs: state.resources.cgs.map((c) => {
-        const thumb = inline(c.thumb);
-        return { ...c, image: inline(c.image) ?? c.image, ...(thumb !== undefined ? { thumb } : {}) };
-      }),
-      audios: state.resources.audios.map((a) => {
-        const src = inline(a.src);
-        return { ...a, ...(src !== undefined ? { src } : {}) };
-      }),
-    },
-  };
+/** 打开工程目录：只解析 project.json，资源保持相对路径引用（二进制按需经协议加载）。 */
+export function deserializeProjectFromDir(projectJson: string): EditorState {
+  return deserializeProject(projectJson);
 }

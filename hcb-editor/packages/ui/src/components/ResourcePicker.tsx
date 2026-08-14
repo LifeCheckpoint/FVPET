@@ -6,6 +6,7 @@
 
 import { useState } from 'react';
 import type { AudioResource, CharacterResource, EditorState } from '@hcb-editor/editor';
+import { assetUrl } from '../projectDir.js';
 
 export type ResourcePickerKind = 'background' | 'cg' | 'character' | 'audio';
 
@@ -71,7 +72,7 @@ export function ResourcePicker({ kind, state, audioType, onPick, onClose }: Reso
                 >
                   <span className="picker-card__thumb">
                     {(r.thumb ?? r.image) ? (
-                      <img src={r.thumb ?? r.image} alt={r.name} loading="lazy" decoding="async" />
+                      <img src={assetUrl(r.thumb ?? r.image)} alt={r.name} loading="lazy" decoding="async" />
                     ) : (
                       <span className="picker-card__fallback">{r.name}</span>
                     )}
@@ -97,7 +98,7 @@ export function ResourcePicker({ kind, state, audioType, onPick, onClose }: Reso
                 >
                   <span className="picker-card__thumb">
                     {(r.thumb ?? r.image) ? (
-                      <img src={r.thumb ?? r.image} alt={r.name} loading="lazy" decoding="async" />
+                      <img src={assetUrl(r.thumb ?? r.image)} alt={r.name} loading="lazy" decoding="async" />
                     ) : (
                       <span className="picker-card__fallback">{r.name}</span>
                     )}
@@ -132,7 +133,7 @@ export function ResourcePicker({ kind, state, audioType, onPick, onClose }: Reso
                         >
                           <span className="picker-card__thumb">
                             {p.image ? (
-                              <img src={p.image} alt={`${drillChar.name} 姿势${p.pose}/服装${p.costume}`} loading="lazy" decoding="async" />
+                              <img src={assetUrl(p.image)} alt={`${drillChar.name} 姿势${p.pose}/服装${p.costume}`} loading="lazy" decoding="async" />
                             ) : (
                               <span className="picker-card__fallback">无图</span>
                             )}
@@ -156,7 +157,7 @@ export function ResourcePicker({ kind, state, audioType, onPick, onClose }: Reso
                                   onPick({ kind: 'character', character: drillChar.name, pose: p.pose, costume: p.costume, expression: f.face })
                                 }
                               >
-                                <img src={f.image} alt={`表情 ${f.face}`} loading="lazy" decoding="async" />
+                                <img src={assetUrl(f.image)} alt={`表情 ${f.face}`} loading="lazy" decoding="async" />
                                 <span className="picker-face__num">{f.face}</span>
                               </button>
                             ))}
@@ -174,7 +175,7 @@ export function ResourcePicker({ kind, state, audioType, onPick, onClose }: Reso
                   <button type="button" className="picker-card" key={c.id} onClick={() => setDrillChar(c)}>
                     <span className="picker-card__thumb">
                       {c.image ? (
-                        <img src={c.image} alt={c.name} loading="lazy" decoding="async" />
+                        <img src={assetUrl(c.image)} alt={c.name} loading="lazy" decoding="async" />
                       ) : (
                         <span className="picker-card__fallback">{c.name}</span>
                       )}
@@ -199,7 +200,7 @@ export function ResourcePicker({ kind, state, audioType, onPick, onClose }: Reso
                     <span className="picker-audio__num">编号 {r.number}</span>
                   </span>
                   {r.src ? (
-                    <audio className="picker-audio__player" controls src={r.src} onClick={(e) => e.stopPropagation()} />
+                    <audio className="picker-audio__player" controls src={assetUrl(r.src)} onClick={(e) => e.stopPropagation()} />
                   ) : null}
                 </div>
               ))}

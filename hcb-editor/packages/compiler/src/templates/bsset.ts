@@ -59,15 +59,17 @@ export const bssetTemplate: Template<BssetNode> = {
   instantiate(node, ctx): { label?: string; instructions: readonly AsmInstruction[] }[] {
     // chaNum（立绘角色编号）缺失时回退 0：底座数据未提取该映射，先保证可编译/预览不崩。
     const chaNum = ctx.tables.characters[node.character]?.chaNum ?? 0;
+    // 预设站位：l→2, m→1, r→0（hcb_build.py bslocation）。
+    const locNum = node.loc === 'l' ? 2 : node.loc === 'r' ? 0 : 1;
     const ins: AsmInstruction[] = [
       { op: 'push_i8', value: chaNum },
       { op: 'push_i8', value: node.pose },
       { op: 'push_i8', value: node.costume },
       { op: 'push_i8', value: node.expression },
       ...signedI8(node.layout),
-      { op: 'push_i8', value: 1 }, // 站位默认 m（IR 未建模，取默认）
+      { op: 'push_i8', value: locNum },
       { op: 'push_nil' }, // 未知
-      { op: 'push_i16', value: 0 }, // z 默认
+      { op: 'push_i16', value: node.z },
       ...signedI16(node.position.x),
       ...signedI16(node.position.y),
       { op: 'push_nil' }, // 未知

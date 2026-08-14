@@ -7,6 +7,8 @@ import { expect, test, type Page } from '@playwright/test';
 
 async function boot(page: Page): Promise<void> {
   await page.goto('/');
+  await expect(page.locator('.app__empty')).toBeVisible();
+  await page.locator('.app__empty-actions').getByRole('button', { name: '新建工程' }).click();
   await expect(page.getByRole('dialog', { name: '新建工程' })).toBeVisible();
   await page.getByRole('button', { name: /创建/ }).click();
   await expect(page.getByRole('dialog', { name: '新建工程' })).toBeHidden();
@@ -17,7 +19,7 @@ function paletteItem(page: Page, label: string) {
 }
 
 test.describe('编辑器冒烟（演示壳 + FakeEngine 兜底）', () => {
-  test('启动展示向导，创建后进入画布（含开始/结束节点）', async ({ page }) => {
+  test('启动展示空白占位，新建工程后进入画布（含开始/结束节点）', async ({ page }) => {
     await boot(page);
     await expect(page.locator('.app__topbar')).toContainText('FVP 剧情编辑器');
     await expect(page.locator('.flow')).toBeVisible();

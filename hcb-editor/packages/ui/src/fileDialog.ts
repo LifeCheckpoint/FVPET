@@ -6,7 +6,7 @@
 export interface FileDialogBridge {
   saveTextFile(defaultName: string, content: string): Promise<string | null>;
   saveBinaryFile(defaultName: string, content: Uint8Array): Promise<string | null>;
-  openTextFile(): Promise<{ name: string; text: string } | null>;
+  openTextFile(): Promise<{ name: string; text: string; path?: string } | null>;
 }
 
 declare global {
@@ -42,7 +42,7 @@ export async function saveBinaryFile(defaultName: string, content: Uint8Array): 
   return null;
 }
 
-export async function openTextFile(): Promise<{ name: string; text: string } | null> {
+export async function openTextFile(): Promise<{ name: string; text: string; path?: string } | null> {
   if (typeof window !== 'undefined' && window.fileDialog) {
     return window.fileDialog.openTextFile();
   }

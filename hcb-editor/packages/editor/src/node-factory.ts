@@ -27,6 +27,9 @@ export type ThreadNode = Extract<IrNode, { kind: 'thread' }>;
 export type JumpNode = Extract<IrNode, { kind: 'jump' }>;
 export type WaitNode = Extract<IrNode, { kind: 'wait' }>;
 export type MsgsetNode = Extract<IrNode, { kind: 'msgset' }>;
+export type EyecatchNode = Extract<IrNode, { kind: 'eyecatch' }>;
+export type BsfadeNode = Extract<IrNode, { kind: 'bsfade' }>;
+export type WhiteNode = Extract<IrNode, { kind: 'white' }>;
 export type RawNode = Extract<IrNode, { kind: 'raw' }>;
 export type CommentNode = Extract<IrNode, { kind: 'comment' }>;
 
@@ -60,15 +63,29 @@ export function bgsetNode(
 
 export function cgsetNode(
   name: string,
-  opts: { readonly slot?: number; readonly mode?: number; readonly flag?: number } = {},
+  opts: {
+    readonly slot?: number;
+    readonly mode?: number;
+    readonly flag?: number;
+    readonly x?: number;
+    readonly y?: number;
+    readonly scale?: number;
+    readonly time?: number;
+  } = {},
 ): CgsetNode {
-  return {
+  const node: CgsetNode = {
     kind: 'cgset',
     name,
+    // 旧工程兼容字段：新模板不再用它们调用无效的共享函数。
     slot: opts.slot ?? 0,
     mode: opts.mode ?? 5,
     flag: opts.flag ?? 2,
   };
+  if (opts.x !== undefined) node.x = opts.x;
+  if (opts.y !== undefined) node.y = opts.y;
+  if (opts.scale !== undefined) node.scale = opts.scale;
+  if (opts.time !== undefined) node.time = opts.time;
+  return node;
 }
 
 export function bssetNode(fields: {
@@ -77,6 +94,8 @@ export function bssetNode(fields: {
   readonly costume: number;
   readonly expression: number;
   readonly layout?: number;
+  readonly loc?: 'l' | 'm' | 'r';
+  readonly z?: number;
   readonly position: { readonly x: number; readonly y: number };
   readonly layer: number;
 }): BssetNode {
@@ -87,6 +106,8 @@ export function bssetNode(fields: {
     costume: fields.costume,
     expression: fields.expression,
     layout: fields.layout ?? 0,
+    loc: fields.loc ?? 'm',
+    z: fields.z ?? 0,
     position: { x: fields.position.x, y: fields.position.y },
     layer: fields.layer,
   };
@@ -106,10 +127,12 @@ export function selsetNode(
 export function audioNode(
   type: 'bgm' | 'voice' | 'se',
   channelOrNum: number,
-  opts: { readonly loop?: boolean } = {},
+  opts: { readonly loop?: boolean; readonly action?: 'play' | 'stop'; readonly time?: number } = {},
 ): AudioNode {
   const node: AudioNode = { kind: 'audio', type, channelOrNum };
   if (opts.loop !== undefined) node.loop = opts.loop;
+  if (opts.action !== undefined) node.action = opts.action;
+  if (opts.time !== undefined) node.time = opts.time;
   return node;
 }
 
@@ -131,6 +154,18 @@ export function waitNode(ms: number): WaitNode {
 
 export function msgsetNode(position: MsgsetNode['position']): MsgsetNode {
   return { kind: 'msgset', position };
+}
+
+export function eyecatchNode(): EyecatchNode {
+  return { kind: 'eyecatch' };
+}
+
+export function bsfadeNode(): BsfadeNode {
+  return { kind: 'bsfade' };
+}
+
+export function whiteNode(): WhiteNode {
+  return { kind: 'white' };
 }
 
 export function commentNode(text: string): CommentNode {
