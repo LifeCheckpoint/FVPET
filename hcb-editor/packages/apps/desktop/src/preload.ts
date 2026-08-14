@@ -23,6 +23,8 @@ const rfvpApi = {
   ): Promise<RfvpLoadResult> => ipcRenderer.invoke('rfvp:load', { bytes, nls, scriptEntry, labels, resourceRoot }),
   jump: (label: string): Promise<void> => ipcRenderer.invoke('rfvp:jump', { label }),
   advance: (): Promise<void> => ipcRenderer.invoke('rfvp:advance'),
+  input: (event: { kind: string; x: number; y: number }): Promise<void> =>
+    ipcRenderer.invoke('rfvp:input', { event }),
   step: (): Promise<void> => ipcRenderer.invoke('rfvp:step'),
   skip: (): Promise<void> => ipcRenderer.invoke('rfvp:skip'),
   dumpPrims: (): Promise<void> => ipcRenderer.invoke('rfvp:dump-prims'),

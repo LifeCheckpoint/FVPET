@@ -148,6 +148,10 @@ export class RfvpProcessManager {
     this.send({ op: 'advance' });
   }
 
+  input(event: { kind: string; x: number; y: number }): void {
+    this.send({ op: 'input', event });
+  }
+
   step(): void {
     this.send({ op: 'step' });
   }

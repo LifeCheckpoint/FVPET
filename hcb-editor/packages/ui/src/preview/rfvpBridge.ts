@@ -3,7 +3,7 @@
  * Electron 下 preload 暴露 window.rfvp；纯浏览器 / Storybook / Playwright 下无此桥。
  */
 
-import type { RfvpEvent } from '@hcb-editor/rfvp';
+import type { RfvpEvent, RfvpInputEvent } from '@hcb-editor/rfvp';
 
 export interface RfvpLoadResult {
   readonly title: string | null;
@@ -20,6 +20,7 @@ export interface RfvpBridge {
   ): Promise<RfvpLoadResult>;
   jump(label: string): Promise<void>;
   advance(): Promise<void>;
+  input(event: RfvpInputEvent): Promise<void>;
   step(): Promise<void>;
   skip(): Promise<void>;
   dumpPrims(): Promise<void>;

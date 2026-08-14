@@ -254,6 +254,10 @@ export function registerRfvpIpc(manager: RfvpProcessManager): void {
     manager.advance();
   });
 
+  ipcMain.handle('rfvp:input', (_event, payload: { event: { kind: string; x: number; y: number } }) => {
+    manager.input(payload.event);
+  });
+
   ipcMain.handle('rfvp:step', () => {
     manager.step();
   });

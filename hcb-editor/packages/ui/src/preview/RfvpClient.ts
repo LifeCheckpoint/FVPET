@@ -7,7 +7,7 @@
  * 因此客户端只负责 prim / done / error 事件订阅与请求转发。
  */
 
-import type { RfvpEvent } from '@hcb-editor/rfvp';
+import type { RfvpEvent, RfvpInputEvent } from '@hcb-editor/rfvp';
 import { getRfvpBridge, type RfvpLoadResult } from './rfvpBridge.js';
 
 export class RfvpClient {
@@ -37,6 +37,10 @@ export class RfvpClient {
 
   advance(): Promise<void> {
     return this.bridge ? this.bridge.advance() : Promise.resolve();
+  }
+
+  input(event: RfvpInputEvent): Promise<void> {
+    return this.bridge ? this.bridge.input(event) : Promise.resolve();
   }
 
   step(): Promise<void> {

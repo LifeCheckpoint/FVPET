@@ -7,6 +7,14 @@ import { z } from 'zod';
 
 export const PROTOCOL_VERSION = 2;
 
+/** 渲染层发往引擎的输入事件（坐标已是引擎虚拟分辨率）。 */
+export const RfvpInputEvent = z.object({
+  kind: z.enum(['pointer_up', 'pointer_down', 'pointer_move']),
+  x: z.number(),
+  y: z.number(),
+});
+export type RfvpInputEvent = z.infer<typeof RfvpInputEvent>;
+
 export const RfvpRequest = z.discriminatedUnion('op', [
   z.object({ op: z.literal('handshake'), protocolVersion: z.number() }),
   z.object({
@@ -18,7 +26,8 @@ export const RfvpRequest = z.discriminatedUnion('op', [
   }),
   z.object({ op: z.literal('jump'), label: z.string() }),
   z.object({ op: z.literal('step') }),
-  z.object({ op: z.literal('advance') }), // 推进到下一个文本
+  z.object({ op: z.literal('advance') }), // 推进到下一个文本（合成 PointerUp，兼容回归测试）
+  z.object({ op: z.literal('input'), event: RfvpInputEvent }), // 真实坐标输入（点击推进 / selset）
   z.object({ op: z.literal('skip') }), // 快进
   z.object({ op: z.literal('get_g'), index: z.number() }),
   z.object({ op: z.literal('set_g'), index: z.number(), value: z.union([z.number(), z.string(), z.null()]) }),

@@ -90,6 +90,9 @@ export class FakeEngine {
         return this.step();
       case 'advance':
         return this.advance();
+      case 'input':
+        // 无头 fake 引擎不消费真实坐标输入（无 frame 输出），保持 no-op 兼容协议。
+        return [];
       case 'skip':
         return this.skip();
       case 'get_g':

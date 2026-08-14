@@ -499,6 +499,50 @@ fn main() {
                 let value = variant_to_json(&rt.get_global(index));
                 emit(&json!({ "type": "g", "index": index, "value": value }));
             }
+            "input" => {
+                let Some(fh) = full_host.as_mut() else {
+                    emit_error("not loaded (input requires full engine)".to_string());
+                    continue;
+                };
+                let Some(ev) = req.get("event").and_then(Value::as_object) else {
+                    emit_error("input requires an event object".to_string());
+                    continue;
+                };
+                let kind = ev.get("kind").and_then(Value::as_str).unwrap_or("");
+                let x = ev.get("x").and_then(Value::as_i64).unwrap_or(0) as i32;
+                let y = ev.get("y").and_then(Value::as_i64).unwrap_or(0) as i32;
+                let event = match kind {
+                    "pointer_down" => RfvpEvent::PointerDown {
+                        button: PointerButton::Left,
+                        x,
+                        y,
+                    },
+                    "pointer_up" => RfvpEvent::PointerUp {
+                        button: PointerButton::Left,
+                        x,
+                        y,
+                    },
+                    "pointer_move" => RfvpEvent::PointerMove {
+                        x,
+                        y,
+                        in_screen: true,
+                    },
+                    other => {
+                        emit_error(format!("unknown input kind: {}", other));
+                        continue;
+                    }
+                };
+                fh.handle_event(event);
+                match fh.tick() {
+                    Ok(tick) => {
+                        emit_frame(fh);
+                        if tick.main_thread_exited {
+                            emit(&json!({ "type": "done" }));
+                        }
+                    }
+                    Err(e) => emit_error(format!("tick failed: {:?}", e)),
+                }
+            }
             "advance" | "step" => {
                 if let Some(fh) = full_host.as_mut() {
                     if op == "advance" {

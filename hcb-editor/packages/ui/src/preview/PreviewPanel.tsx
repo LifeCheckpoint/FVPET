@@ -1,20 +1,23 @@
 /**
  * 预览面板：canvas 直显真实引擎（rfvp-cli full 引擎）回传的 RGBA 帧 + 文本覆盖 + 点击推进。
  *
- * 文本队列由编辑器投影（buildPreviewScript）提供，用于本地推进文本游标（文本 UI 的
- * 引擎接管属 Phase 2）；场景画面完全由引擎 `frame` 事件驱动：把 base64 解码成 RGBA
- * 字节，1:1 写入 canvas，再由 CSS 按 `.preview__stage` 宽度等比缩放（不拉伸）。
+ * 点击转发：把舞台 canvas 上的点击坐标反算回引擎虚拟分辨率（用引擎帧实际宽高，按
+ * event_handler 同款 letterbox 公式），再发 `client.input({ kind: 'pointer_up', ... })`，
+ * 让真实引擎自己推进剧情并响应 selset 选项。
+ *
+ * 文本 UI 说明：Phase 2 实测发现 headless 引擎帧为纯色（`input-smoke` 验证
+ * perFrameDistinct=[1,1,1,1]，即 msgset+dia 也未在帧内绘制消息窗口/文字），因此文本与
+ * 选项仍由编辑器投影（buildPreviewScript）驱动，HTML textbox/choices 覆盖层保留。
  *
  * 缺桥（浏览器 / Storybook / Playwright）→ fake 模式（仅文本，canvas 空白）；
- * 编译 / 装载 / tick 失败 → error 模式。真实引擎就绪时点击推进会额外调用
- * client.advance()（引擎回传下一个 frame）。
+ * 编译 / 装载 / tick 失败 → error 模式。
  *
  * 预览保持游戏原始比例（4:3 / 16:9），画布自适应右栏宽度，不拉伸溢出。
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import type { EditorState } from '@hcb-editor/editor';
-import type { FakePrim, FakeScript, RfvpEvent } from '@hcb-editor/rfvp';
+import type { FakePrim, FakeScript, RfvpEvent, RfvpInputEvent } from '@hcb-editor/rfvp';
 import { buildPreviewScript } from './buildPreviewScript.js';
 import { loadBaseBinary } from './baseBinary.js';
 import { compileEditorStateDetailed } from './compileFromState.js';
@@ -72,6 +75,8 @@ export function PreviewPanel({ state, ratio, resourceRoot, onLocate }: PreviewPa
   const textsRef = useRef<readonly { readonly text: string; readonly speaker?: string; readonly audioSrc?: string; readonly choices?: readonly string[] }[]>([]);
   const cursorRef = useRef(0);
   const engineReadyRef = useRef(false);
+  /** 最近一帧引擎帧的虚拟分辨率（点击坐标反算的基准）。 */
+  const frameSizeRef = useRef<{ readonly width: number; readonly height: number } | null>(null);
 
   const [text, setText] = useState<string | null>(null);
   const [choices, setChoices] = useState<readonly string[] | null>(null);
@@ -116,6 +121,7 @@ export function PreviewPanel({ state, ratio, resourceRoot, onLocate }: PreviewPa
             canvas.width = ev.width;
             canvas.height = ev.height;
           }
+          frameSizeRef.current = { width: ev.width, height: ev.height };
           const ctx = canvas.getContext('2d');
           if (!ctx) {
             break;
@@ -179,6 +185,7 @@ export function PreviewPanel({ state, ratio, resourceRoot, onLocate }: PreviewPa
     const timer = setTimeout(() => {
       const client = clientRef.current!;
       engineReadyRef.current = false;
+      frameSizeRef.current = null;
       if (!client.supported) {
         setEngineMode('fake');
         return;
@@ -196,7 +203,13 @@ export function PreviewPanel({ state, ratio, resourceRoot, onLocate }: PreviewPa
           const { bytes, scriptEntry, labels } = compileEditorStateDetailed(state, baseData);
           return client.load(bytes, state.header.nls, scriptEntry, labels, resourceRoot);
         })
-        .then(() => {
+        .then((loaded) => {
+          if (loaded?.screenSize) {
+            frameSizeRef.current = {
+              width: loaded.screenSize[0],
+              height: loaded.screenSize[1],
+            };
+          }
           engineReadyRef.current = true;
           setEngineMode('real');
           setEngineError(null);
@@ -211,11 +224,8 @@ export function PreviewPanel({ state, ratio, resourceRoot, onLocate }: PreviewPa
     return () => clearTimeout(timer);
   }, [state.document, state.header, state.resources, resourceRoot]);
 
-  const advance = useCallback(() => {
-    const client = clientRef.current!;
-    if (client.supported && engineReadyRef.current) {
-      void client.advance();
-    }
+  /** 本地投影游标推进（文本/选项仍由投影驱动；引擎帧已验证不含文字）。 */
+  const advanceProjection = useCallback(() => {
     if (cursorRef.current < textsRef.current.length) {
       const next = textsRef.current[cursorRef.current]!;
       cursorRef.current += 1;
@@ -231,12 +241,58 @@ export function PreviewPanel({ state, ratio, resourceRoot, onLocate }: PreviewPa
     }
   }, []);
 
+  /** 无坐标推进入口（selset 选择按钮）：保留 Phase 1 合成点击 + 本地游标。 */
+  const advance = useCallback(() => {
+    const client = clientRef.current!;
+    if (client.supported && engineReadyRef.current) {
+      void client.advance();
+    }
+    advanceProjection();
+  }, [advanceProjection]);
+
+  /** 舞台点击：反算引擎虚拟坐标并转发 input，同时推进本地投影游标。 */
+  const handleStageClick = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+    const client = clientRef.current!;
+    if (client.supported && engineReadyRef.current) {
+      const frame = frameSizeRef.current;
+      const canvas = canvasRef.current;
+      if (frame && canvas) {
+        const rect = canvas.getBoundingClientRect();
+        const cw = rect.width;
+        const ch = rect.height;
+        const vw = frame.width;
+        const vh = frame.height;
+
+        // event_handler 同款 letterbox 反算：scale = min(cw/vw, ch/vh)。
+        const scale = Math.min(cw / vw, ch / vh);
+        const offX = (cw - vw * scale) / 2;
+        const offY = (ch - vh * scale) / 2;
+
+        let vx = (event.clientX - rect.left - offX) / scale;
+        let vy = (event.clientY - rect.top - offY) / scale;
+        vx = Math.max(0, Math.min(vw - 1, vx));
+        vy = Math.max(0, Math.min(vh - 1, vy));
+
+        const input: RfvpInputEvent = {
+          kind: 'pointer_up',
+          x: Math.round(vx),
+          y: Math.round(vy),
+        };
+        void client.input(input);
+      } else {
+        // 帧尺寸尚未就绪（首帧未到）时退回合成点击。
+        void client.advance();
+      }
+    }
+    advanceProjection();
+  }, [advanceProjection]);
+
   const labels = state.document.nodes.filter((n) => n.node.kind === 'label');
 
   return (
     <div className="preview">
       {engineError && <div className="preview__engine-error">{engineError}</div>}
-      <div className="preview__stage" onClick={advance}>
+      <div className="preview__stage" onClick={handleStageClick}>
         <canvas ref={canvasRef} width={defaultWidth} height={defaultHeight} />
         <div className="preview__stage-hint">{text === null && !done ? '点击推进' : ''}</div>
       </div>
