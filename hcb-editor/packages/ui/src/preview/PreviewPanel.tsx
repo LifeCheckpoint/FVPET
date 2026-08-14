@@ -77,10 +77,14 @@ export function PreviewPanel({ state, ratio, resourceRoot, onLocate }: PreviewPa
   const engineReadyRef = useRef(false);
   /** 最近一帧引擎帧的虚拟分辨率（点击坐标反算的基准）。 */
   const frameSizeRef = useRef<{ readonly width: number; readonly height: number } | null>(null);
+  /** 已收到真实引擎 RGBA frame（引擎帧内含文本框/文字/选项）。 */
+  const frameReceivedRef = useRef(false);
 
   const [text, setText] = useState<string | null>(null);
   const [choices, setChoices] = useState<readonly string[] | null>(null);
   const [done, setDone] = useState(false);
+  /** 驱动 React 重渲染：真实引擎出帧后隐藏 HTML 文本/选项覆盖层。 */
+  const [frameReceived, setFrameReceived] = useState(false);
   const [, setEngineMode] = useState<EngineMode>(() =>
     clientRef.current!.supported ? 'real' : 'fake',
   );
@@ -132,6 +136,8 @@ export function PreviewPanel({ state, ratio, resourceRoot, onLocate }: PreviewPa
             ev.height,
           );
           ctx.putImageData(imageData, 0, 0);
+          frameReceivedRef.current = true;
+          setFrameReceived(true);
           break;
         }
         // 无头 portable 引擎补的 prims 是系统 UI 矩形，不再参与渲染（场景画面由 frame 驱动）。
@@ -139,6 +145,8 @@ export function PreviewPanel({ state, ratio, resourceRoot, onLocate }: PreviewPa
           break;
         case 'error':
           engineReadyRef.current = false;
+          frameReceivedRef.current = false;
+          setFrameReceived(false);
           setEngineMode('error');
           setEngineError(
             ev.message.includes('tick failed')
@@ -160,6 +168,8 @@ export function PreviewPanel({ state, ratio, resourceRoot, onLocate }: PreviewPa
     });
     const offExit = client.subscribeExit(() => {
       engineReadyRef.current = false;
+      frameReceivedRef.current = false;
+      setFrameReceived(false);
       setEngineMode('error');
       setEngineError('真实引擎进程已退出，已回退演示引擎');
     });
@@ -186,6 +196,8 @@ export function PreviewPanel({ state, ratio, resourceRoot, onLocate }: PreviewPa
       const client = clientRef.current!;
       engineReadyRef.current = false;
       frameSizeRef.current = null;
+      frameReceivedRef.current = false;
+      setFrameReceived(false);
       if (!client.supported) {
         setEngineMode('fake');
         return;
@@ -216,6 +228,8 @@ export function PreviewPanel({ state, ratio, resourceRoot, onLocate }: PreviewPa
         })
         .catch((err: unknown) => {
           engineReadyRef.current = false;
+          frameReceivedRef.current = false;
+          setFrameReceived(false);
           setEngineMode('error');
           setEngineError(err instanceof Error ? err.message : String(err));
         });
@@ -241,16 +255,23 @@ export function PreviewPanel({ state, ratio, resourceRoot, onLocate }: PreviewPa
     }
   }, []);
 
-  /** 无坐标推进入口（selset 选择按钮）：保留 Phase 1 合成点击 + 本地游标。 */
+  /**
+   * 无坐标推进入口（selset 选择按钮）。
+   * 真实引擎模式只转发 advance（引擎自己推进文本）；fake/降级模式走本地投影游标。
+   */
   const advance = useCallback(() => {
     const client = clientRef.current!;
     if (client.supported && engineReadyRef.current) {
       void client.advance();
+      return;
     }
     advanceProjection();
   }, [advanceProjection]);
 
-  /** 舞台点击：反算引擎虚拟坐标并转发 input，同时推进本地投影游标。 */
+  /**
+   * 舞台点击：反算引擎虚拟坐标并转发 input（引擎自己推进剧情 / 文本）。
+   * fake/降级模式（无桥或引擎未就绪）才走本地投影游标推进。
+   */
   const handleStageClick = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
     const client = clientRef.current!;
     if (client.supported && engineReadyRef.current) {
@@ -283,24 +304,34 @@ export function PreviewPanel({ state, ratio, resourceRoot, onLocate }: PreviewPa
         // 帧尺寸尚未就绪（首帧未到）时退回合成点击。
         void client.advance();
       }
+      return;
     }
     advanceProjection();
   }, [advanceProjection]);
 
   const labels = state.document.nodes.filter((n) => n.node.kind === 'label');
 
+  // 真实引擎已出帧 → 引擎帧内含文本框 / 文字 / 选项，隐藏编辑器 HTML 覆盖层；
+  // 无桥 fake 模式 / 引擎未就绪 → 保留投影驱动的 HTML 覆盖层兜底。
+  const hideEngineOverlay =
+    clientRef.current!.supported && engineReadyRef.current && frameReceived;
+
   return (
     <div className="preview">
       {engineError && <div className="preview__engine-error">{engineError}</div>}
       <div className="preview__stage" onClick={handleStageClick}>
         <canvas ref={canvasRef} width={defaultWidth} height={defaultHeight} />
-        <div className="preview__stage-hint">{text === null && !done ? '点击推进' : ''}</div>
+        {!hideEngineOverlay && (
+          <div className="preview__stage-hint">{text === null && !done ? '点击推进' : ''}</div>
+        )}
       </div>
-      <div className="preview__textbox">
-        {done ? '（完）' : text ?? ''}
-        {audioHint && <span className="preview__audio-hint">{audioHint}</span>}
-      </div>
-      {choices !== null && choices.length > 0 && (
+      {!hideEngineOverlay && (
+        <div className="preview__textbox">
+          {done ? '（完）' : text ?? ''}
+          {audioHint && <span className="preview__audio-hint">{audioHint}</span>}
+        </div>
+      )}
+      {!hideEngineOverlay && choices !== null && choices.length > 0 && (
         <div className="preview__choices">
           {choices.map((c, i) => (
             <button type="button" className="preview__choice" key={i} onClick={advance}>
