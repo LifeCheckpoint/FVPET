@@ -9,8 +9,6 @@
 use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
 
-use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
-use base64::Engine as _;
 use rfvp::host_api::{
     AudioParams, AudioStreamDesc, AudioStreamId, ColorRgba, DrawSolidCommand, DrawSpriteCommand,
     EncodedAudioKind, PointerButton, RfvpAudio, RfvpClock, RfvpEvent, RfvpFile, RfvpFileInfo,
@@ -263,10 +261,31 @@ impl RfvpHost for CliHost {
 // ---------------------------------------------------------------------------
 // 协议
 // ---------------------------------------------------------------------------
+//
+// stdout 不再是「行分隔 JSON」，而是长度前缀的二进制消息流：
+//   [u32 LE total_len][u8 kind][payload]
+// - kind 0 = JSON 事件（UTF-8）
+// - kind 1 = RGBA 帧：[u32 width][u32 height][width*height*4 字节紧凑 RGBA]
+// 这样帧像素免去 base64 编码 / 5MB JSON 字符串 / 浏览器 atob 逐字节解码。
+
+const KIND_JSON: u8 = 0;
+const KIND_FRAME: u8 = 1;
+
+fn write_message(kind: u8, payload: &[u8]) {
+    let stdout = io::stdout();
+    let mut out = stdout.lock();
+    let total_len = (payload.len() + 1) as u32;
+    let _ = out.write_all(&total_len.to_le_bytes());
+    let _ = out.write_all(&[kind]);
+    let _ = out.write_all(payload);
+    let _ = out.flush();
+}
 
 fn emit(value: &Value) {
-    println!("{}", value);
-    io::stdout().flush().ok();
+    match serde_json::to_vec(value) {
+        Ok(payload) => write_message(KIND_JSON, &payload),
+        Err(_) => {}
+    }
 }
 
 fn emit_error(message: String) {
@@ -318,20 +337,16 @@ fn emit_frame(host: &PreviewHost) {
     let pixels = fb.pixels();
     let row_bytes = width as usize * 4;
 
-    // 紧凑打包 RGBA 行（stride 可能包含填充，逐行拷贝）。
-    let mut raw = Vec::with_capacity(height as usize * row_bytes);
+    // 紧凑打包 RGBA 行（stride 可能包含填充，逐行拷贝），
+    // 作为 kind 1 二进制帧消息写出（无 base64 / JSON 字符串开销）。
+    let mut payload = Vec::with_capacity(8 + height as usize * row_bytes);
+    payload.extend_from_slice(&(width as u32).to_le_bytes());
+    payload.extend_from_slice(&(height as u32).to_le_bytes());
     for row in 0..height as usize {
         let start = row * stride;
-        raw.extend_from_slice(&pixels[start..start + row_bytes]);
+        payload.extend_from_slice(&pixels[start..start + row_bytes]);
     }
-
-    emit(&json!({
-        "type": "frame",
-        "width": width,
-        "height": height,
-        "format": "rgba8",
-        "data": BASE64_STANDARD.encode(&raw),
-    }));
+    write_message(KIND_FRAME, &payload);
 }
 
 fn nls_from_str(s: Option<&str>) -> Nls {
@@ -552,7 +567,14 @@ fn main() {
             }
             "advance" | "step" => {
                 if let Some(fh) = full_host.as_mut() {
+                    // advance = 合成一次点击（down + up），驱动 InputGetDown 等待环推进；
+                    // step 只推进一帧，不注入输入。
                     if op == "advance" {
+                        fh.handle_event(RfvpEvent::PointerDown {
+                            button: PointerButton::Left,
+                            x: 0,
+                            y: 0,
+                        });
                         fh.handle_event(RfvpEvent::PointerUp {
                             button: PointerButton::Left,
                             x: 0,
@@ -596,6 +618,11 @@ fn main() {
                     let mut done = false;
                     let mut last_pc = 0usize;
                     for _ in 0..100_000 {
+                        fh.handle_event(RfvpEvent::PointerDown {
+                            button: PointerButton::Left,
+                            x: 0,
+                            y: 0,
+                        });
                         fh.handle_event(RfvpEvent::PointerUp {
                             button: PointerButton::Left,
                             x: 0,

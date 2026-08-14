@@ -46,7 +46,7 @@ function reachableIds(document: EditorDocument): Set<string> {
 }
 
 /** 沿 next 边做拓扑排序（仅限从 start 可达的节点）；分支目标节点按 id 顺序附加。 */
-function linearize(document: EditorDocument): DocNode[] {
+export function linearize(document: EditorDocument): DocNode[] {
   const reachable = reachableIds(document);
   const nodes = document.nodes.filter((n) => reachable.has(n.id));
   const edges = document.edges.filter((e) => reachable.has(e.source) && reachable.has(e.target));

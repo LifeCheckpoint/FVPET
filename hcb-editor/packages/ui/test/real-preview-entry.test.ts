@@ -1,11 +1,10 @@
 import { afterAll, describe, expect, it } from 'vitest';
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import * as readline from 'node:readline';
 import { applyCommand, emptyState } from '@hcb-editor/editor';
 import { compileEditorStateDetailed } from '../src/preview/compileFromState.js';
+import { spawnRfvpCli } from './rfvp-cli-client.js';
 
 const BASE = path.resolve(process.cwd(), '../../../.reference_repo/SImple-.hcb-Editor/base.chb');
 const EXE = path.resolve(process.cwd(), '../../crates/rfvp-cli/target/debug/rfvp-cli.exe');
@@ -20,22 +19,8 @@ async function runPreview(
   scriptEntry: number,
   labels: Readonly<Record<string, number>>,
 ): Promise<{ readonly events: readonly Record<string, unknown>[]; readonly stderr: string }> {
-  const child: ChildProcessWithoutNullStreams = spawn(EXE, [], { stdio: ['pipe', 'pipe', 'pipe'] });
-  const events: Record<string, unknown>[] = [];
-  let stderr = '';
-  readline.createInterface({ input: child.stdout }).on('line', (line) => {
-    try {
-      events.push(JSON.parse(line) as Record<string, unknown>);
-    } catch {
-      // 协议以外输出不影响集成断言。
-    }
-  });
-  child.stderr.on('data', (chunk: Buffer) => {
-    stderr += chunk.toString();
-  });
-  const send = (request: Record<string, unknown>): void => {
-    child.stdin.write(`${JSON.stringify(request)}\n`);
-  };
+  const session = spawnRfvpCli(EXE);
+  const send = session.send;
 
   send({ op: 'handshake', protocolVersion: 2 });
   await wait(40);
@@ -44,8 +29,8 @@ async function runPreview(
   send({ op: 'advance' });
   await wait(120);
   send({ op: 'shutdown' });
-  await new Promise<void>((resolve) => child.once('exit', () => resolve()));
-  return { events, stderr };
+  await session.waitExit();
+  return { events: session.events, stderr: session.stderr };
 }
 
 afterAll(() => {

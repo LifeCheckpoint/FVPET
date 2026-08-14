@@ -7,7 +7,7 @@
  */
 
 import { compileProjectDetailed, type CompileProjectOptions } from '@hcb-editor/compiler';
-import { projectToIr, type EditorState } from '@hcb-editor/editor';
+import { linearize, projectToIr, type EditorState } from '@hcb-editor/editor';
 import { formatIssues, validateIr } from '@hcb-editor/hcb/validate';
 
 export interface CompiledEditorOutput {
@@ -16,6 +16,8 @@ export interface CompiledEditorOutput {
   readonly scriptEntry: number;
   /** label → 绝对代码地址（供真实引擎 label 断点 jump）。 */
   readonly labels: Readonly<Record<string, number>>;
+  /** 节点 id → 绝对代码地址（position 事件反查精确节点，comment 等无代码节点缺失）。 */
+  readonly nodeAddrs: Readonly<Record<string, number>>;
 }
 
 export function compileEditorState(state: EditorState, baseData: Uint8Array | null): Uint8Array {
@@ -23,6 +25,9 @@ export function compileEditorState(state: EditorState, baseData: Uint8Array | nu
 }
 
 export function compileEditorStateDetailed(state: EditorState, baseData: Uint8Array | null): CompiledEditorOutput {
+  // projectToIr 内部按 linearize 线性化（START 除外），与 ir.nodes 严格 1:1 对应；
+  // 这里复算同序节点 id 列表，把编译器的「IR 节点索引 → 地址」转成「节点 id → 地址」。
+  const ordered = linearize(state.document).filter((n) => n.id !== state.document.startNodeId);
   const ir = projectToIr(state.document, state.header);
   const issues = validateIr(ir);
   if (issues.length > 0) {
@@ -48,9 +53,17 @@ export function compileEditorStateDetailed(state: EditorState, baseData: Uint8Ar
     opts.baseData = baseData;
   }
   const result = compileProjectDetailed(ir, state.header.nls, opts);
+  const nodeAddrs: Record<string, number> = {};
+  for (const [index, addr] of result.nodeAddrs) {
+    const nodeId = ordered[index]?.id;
+    if (nodeId !== undefined) {
+      nodeAddrs[nodeId] = addr;
+    }
+  }
   return {
     bytes: result.bytes,
     scriptEntry: result.scriptEntry,
     labels: Object.fromEntries(result.labels),
+    nodeAddrs,
   };
 }

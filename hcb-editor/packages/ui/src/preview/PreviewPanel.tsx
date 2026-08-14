@@ -17,7 +17,7 @@
 
 import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import type { EditorState } from '@hcb-editor/editor';
-import type { FakePrim, FakeScript, RfvpEvent, RfvpInputEvent } from '@hcb-editor/rfvp';
+import type { FakePrim, FakeScript, RfvpEvent } from '@hcb-editor/rfvp';
 import { buildPreviewScript } from './buildPreviewScript.js';
 import { loadBaseBinary } from './baseBinary.js';
 import { compileEditorStateDetailed } from './compileFromState.js';
@@ -94,8 +94,8 @@ export function PreviewPanel({ state, ratio, resourceRoot, onLocate }: PreviewPa
   // position 事件 → 节点定位：onLocate 以 ref 保持最新（applyEvents 为空依赖闭包）。
   const onLocateRef = useRef(onLocate);
   onLocateRef.current = onLocate;
-  /** label 节点 id → 编译后绝对地址（position 事件反查当前所在 label 块）。 */
-  const labelAddrByIdRef = useRef<ReadonlyMap<string, number>>(new Map());
+  /** 全部节点 id → 编译后绝对地址（position 事件反查当前执行到的精确节点）。 */
+  const nodeAddrByIdRef = useRef<ReadonlyMap<string, number>>(new Map());
   const lastLocatedNodeIdRef = useRef<string | null>(null);
 
   const applyEvents = useCallback((events: readonly RfvpEvent[]) => {
@@ -117,11 +117,11 @@ export function PreviewPanel({ state, ratio, resourceRoot, onLocate }: PreviewPa
             `${ev.action === 'play' ? '播放' : ev.action === 'stop' ? '停止' : '加载'}音频 slot ${ev.channel}`,
           );
           break;
-        // 引擎执行位置：反查「不超过 pc 的最大 label 地址」→ 对应 label 节点 → 高亮定位。
+        // 引擎执行位置：反查「不超过 pc 的最大节点地址」→ 对应节点 → 精确高亮定位。
         case 'position': {
           let bestAddr = -1;
           let bestNodeId: string | null = null;
-          for (const [nodeId, addr] of labelAddrByIdRef.current) {
+          for (const [nodeId, addr] of nodeAddrByIdRef.current) {
             if (addr <= ev.pc && addr > bestAddr) {
               bestAddr = addr;
               bestNodeId = nodeId;
@@ -133,15 +133,15 @@ export function PreviewPanel({ state, ratio, resourceRoot, onLocate }: PreviewPa
           }
           break;
         }
-        // full 引擎回传的完整 RGBA 帧：base64 解码后 1:1 写入 canvas。
+        // full 引擎回传的完整 RGBA 帧：二进制通道（Uint8Array）零拷贝建 ImageData 写入 canvas。
         case 'frame': {
           const canvas = canvasRef.current;
           if (!canvas) {
             break;
           }
-          const bytes = Uint8Array.from(atob(ev.data), (c) => c.charCodeAt(0));
+          const data = ev.data;
           const expected = ev.width * ev.height * 4;
-          if (bytes.length < expected) {
+          if (data.length < expected) {
             break;
           }
           if (canvas.width !== ev.width || canvas.height !== ev.height) {
@@ -154,7 +154,7 @@ export function PreviewPanel({ state, ratio, resourceRoot, onLocate }: PreviewPa
             break;
           }
           const imageData = new ImageData(
-            new Uint8ClampedArray(bytes.buffer, bytes.byteOffset, expected),
+            new Uint8ClampedArray(data.buffer, data.byteOffset, expected),
             ev.width,
             ev.height,
           );
@@ -214,14 +214,8 @@ export function PreviewPanel({ state, ratio, resourceRoot, onLocate }: PreviewPa
     setAudioHint(null);
 
     // 重置位置映射（编译结果异步到达前先清空，避免旧映射残留）。
-    labelAddrByIdRef.current = new Map();
+    nodeAddrByIdRef.current = new Map();
     lastLocatedNodeIdRef.current = null;
-    const labelNameToId = new Map<string, string>();
-    for (const n of state.document.nodes) {
-      if (n.node.kind === 'label') {
-        labelNameToId.set(n.node.name, n.id);
-      }
-    }
 
     // 真实引擎重载防抖：连线/拖动会高频触发 state 变化，
     // 若每次立即走「5MB 解码 + 编译 + boot」会明显卡顿，改为暂停 500ms 后再跑。
@@ -245,16 +239,8 @@ export function PreviewPanel({ state, ratio, resourceRoot, onLocate }: PreviewPa
       setEngineMode('real');
       void loadBaseBinary(state.header.game)
         .then((baseData) => {
-          const { bytes, scriptEntry, labels } = compileEditorStateDetailed(state, baseData);
-          const addrById = new Map<string, number>();
-          const labelToAddr = new Map(Object.entries(labels));
-          for (const [name, id] of labelNameToId) {
-            const addr = labelToAddr.get(name);
-            if (addr !== undefined) {
-              addrById.set(id, addr);
-            }
-          }
-          labelAddrByIdRef.current = addrById;
+          const { bytes, scriptEntry, labels, nodeAddrs } = compileEditorStateDetailed(state, baseData);
+          nodeAddrByIdRef.current = new Map(Object.entries(nodeAddrs));
           return client.load(bytes, state.header.nls, scriptEntry, labels, resourceRoot);
         })
         .then((loaded) => {
@@ -311,45 +297,101 @@ export function PreviewPanel({ state, ratio, resourceRoot, onLocate }: PreviewPa
   }, [advanceProjection]);
 
   /**
-   * 舞台点击：反算引擎虚拟坐标并转发 input（引擎自己推进剧情 / 文本）。
-   * fake/降级模式（无桥或引擎未就绪）才走本地投影游标推进。
+   * 舞台坐标反算：canvas 显示尺寸 → 引擎虚拟分辨率（event_handler 同款 letterbox 公式）。
+   * 帧尺寸未就绪时返回 null。
    */
-  const handleStageClick = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
-    const client = clientRef.current!;
-    if (client.supported && engineReadyRef.current) {
+  const mapStageToVirtual = useCallback(
+    (clientX: number, clientY: number): { readonly x: number; readonly y: number } | null => {
       const frame = frameSizeRef.current;
       const canvas = canvasRef.current;
-      if (frame && canvas) {
-        const rect = canvas.getBoundingClientRect();
-        const cw = rect.width;
-        const ch = rect.height;
-        const vw = frame.width;
-        const vh = frame.height;
-
-        // event_handler 同款 letterbox 反算：scale = min(cw/vw, ch/vh)。
-        const scale = Math.min(cw / vw, ch / vh);
-        const offX = (cw - vw * scale) / 2;
-        const offY = (ch - vh * scale) / 2;
-
-        let vx = (event.clientX - rect.left - offX) / scale;
-        let vy = (event.clientY - rect.top - offY) / scale;
-        vx = Math.max(0, Math.min(vw - 1, vx));
-        vy = Math.max(0, Math.min(vh - 1, vy));
-
-        const input: RfvpInputEvent = {
-          kind: 'pointer_up',
-          x: Math.round(vx),
-          y: Math.round(vy),
-        };
-        void client.input(input);
-      } else {
-        // 帧尺寸尚未就绪（首帧未到）时退回合成点击。
-        void client.advance();
+      if (!frame || !canvas) {
+        return null;
       }
-      return;
+      const rect = canvas.getBoundingClientRect();
+      const cw = rect.width;
+      const ch = rect.height;
+      const vw = frame.width;
+      const vh = frame.height;
+
+      // event_handler 同款 letterbox 反算：scale = min(cw/vw, ch/vh)。
+      const scale = Math.min(cw / vw, ch / vh);
+      const offX = (cw - vw * scale) / 2;
+      const offY = (ch - vh * scale) / 2;
+
+      let vx = (clientX - rect.left - offX) / scale;
+      let vy = (clientY - rect.top - offY) / scale;
+      vx = Math.max(0, Math.min(vw - 1, vx));
+      vy = Math.max(0, Math.min(vh - 1, vy));
+      return { x: Math.round(vx), y: Math.round(vy) };
+    },
+    [],
+  );
+
+  /** mousemove → pointer_move（rAF 节流），引擎据此更新光标 / 悬停高亮。 */
+  const movePendingRef = useRef(false);
+  const pendingMoveRef = useRef<{ readonly x: number; readonly y: number } | null>(null);
+  const flushMove = useCallback(() => {
+    movePendingRef.current = false;
+    const p = pendingMoveRef.current;
+    pendingMoveRef.current = null;
+    if (p) {
+      void clientRef.current!.input({ kind: 'pointer_move', x: p.x, y: p.y });
     }
-    advanceProjection();
-  }, [advanceProjection]);
+  }, []);
+
+  const handleStageMove = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      const client = clientRef.current!;
+      if (!(client.supported && engineReadyRef.current)) {
+        return;
+      }
+      const p = mapStageToVirtual(event.clientX, event.clientY);
+      if (!p) {
+        return;
+      }
+      pendingMoveRef.current = p;
+      if (!movePendingRef.current) {
+        movePendingRef.current = true;
+        requestAnimationFrame(flushMove);
+      }
+    },
+    [mapStageToVirtual, flushMove],
+  );
+
+  /** mousedown → pointer_down：真实引擎按下沿推进 / 命中 selset 选项。 */
+  const handleStageDown = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      const client = clientRef.current!;
+      if (client.supported && engineReadyRef.current) {
+        const p = mapStageToVirtual(event.clientX, event.clientY);
+        if (p) {
+          void client.input({ kind: 'pointer_down', x: p.x, y: p.y });
+        }
+        return;
+      }
+      // fake / 降级模式：down 不推进，交给 up 统一推进（避免一次点击双推进）。
+    },
+    [mapStageToVirtual],
+  );
+
+  /** mouseup → pointer_up：真实引擎响应抬起；fake / 降级模式走本地投影游标推进。 */
+  const handleStageUp = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      const client = clientRef.current!;
+      if (client.supported && engineReadyRef.current) {
+        const p = mapStageToVirtual(event.clientX, event.clientY);
+        if (p) {
+          void client.input({ kind: 'pointer_up', x: p.x, y: p.y });
+        } else {
+          // 帧尺寸尚未就绪（首帧未到）时退回合成点击。
+          void client.advance();
+        }
+        return;
+      }
+      advanceProjection();
+    },
+    [mapStageToVirtual, advanceProjection],
+  );
 
   const labels = state.document.nodes.filter((n) => n.node.kind === 'label');
 
@@ -361,7 +403,12 @@ export function PreviewPanel({ state, ratio, resourceRoot, onLocate }: PreviewPa
   return (
     <div className="preview">
       {engineError && <div className="preview__engine-error">{engineError}</div>}
-      <div className="preview__stage" onClick={handleStageClick}>
+      <div
+        className="preview__stage"
+        onMouseDown={handleStageDown}
+        onMouseUp={handleStageUp}
+        onMouseMove={handleStageMove}
+      >
         <canvas ref={canvasRef} width={defaultWidth} height={defaultHeight} />
         {!hideEngineOverlay && (
           <div className="preview__stage-hint">{text === null && !done ? '点击推进' : ''}</div>

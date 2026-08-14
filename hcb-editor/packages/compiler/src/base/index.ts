@@ -10,7 +10,7 @@ import type { BackgroundEntry, CharacterEntry, CgEntry, GameTables, TemplateCtx 
 import { compileWithBaseDetailed } from '../passes/compile.js';
 import { assembleFlatWithLabels } from '../passes/assemble.js';
 import { encodeFlatItems } from '../passes/encode.js';
-import { lower } from '../passes/lower.js';
+import { lowerWithNodes, NODE_MARKER_PREFIX } from '../passes/lower.js';
 import { sakuraMoyuBaseData } from './data/sakura-moyu.js';
 import { sakuraMoyuBackgrounds, sakuraMoyuCgs } from './data/sakura-moyu-resources.js';
 import { generateSpeakFunctions } from './function-gen.js';
@@ -162,6 +162,8 @@ export interface CompileProjectResult {
   readonly scriptEntry: number;
   /** label → 绝对代码地址（供 label 断点 jump）。 */
   readonly labels: ReadonlyMap<string, number>;
+  /** IR 节点索引 → 绝对代码地址（供精确节点定位；comment 等无代码节点缺失）。 */
+  readonly nodeAddrs: ReadonlyMap<number, number>;
 }
 
 /**
@@ -242,7 +244,24 @@ export function compileProjectDetailed(ir: IrScript, nls: Nls, opts: CompileProj
 
   // 脚本-only：代码区起点为 4，label 相对偏移即绝对地址。
   const templateCtx: TemplateCtx = { nls, tables: ctx.tables };
-  const blocks = lower(ir, templateCtx);
-  const { items, labels } = assembleFlatWithLabels(blocks, sysdesc, nls);
-  return { bytes: encodeFlatItems(items, sysdesc, nls), scriptEntry: 4, labels };
+  const { blocks, nodeStartLabels } = lowerWithNodes(ir, templateCtx);
+  const { items, labels: relativeLabels } = assembleFlatWithLabels(blocks, sysdesc, nls);
+  const labels = new Map<string, number>();
+  for (const [name, rel] of relativeLabels) {
+    if (name.startsWith(NODE_MARKER_PREFIX)) {
+      continue;
+    }
+    labels.set(name, rel);
+  }
+  const nodeAddrs = new Map<number, number>();
+  nodeStartLabels.forEach((marker, index) => {
+    if (marker === undefined) {
+      return;
+    }
+    const rel = relativeLabels.get(marker);
+    if (rel !== undefined) {
+      nodeAddrs.set(index, rel);
+    }
+  });
+  return { bytes: encodeFlatItems(items, sysdesc, nls), scriptEntry: 4, labels, nodeAddrs };
 }

@@ -71,7 +71,8 @@ export const RfvpEvent = z.discriminatedUnion('type', [
     width: z.number().int().positive(),
     height: z.number().int().positive(),
     format: z.literal('rgba8'),
-    data: z.string(),
+    // 帧像素走二进制通道（长度前缀消息 kind 1），不经 base64 / JSON 字符串。
+    data: z.instanceof(Uint8Array),
   }),
   z.object({ type: z.literal('g'), index: z.number(), value: z.unknown() }),
   z.object({ type: z.literal('done') }),

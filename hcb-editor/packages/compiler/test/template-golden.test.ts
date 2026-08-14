@@ -66,4 +66,26 @@ describe('template golden', () => {
     expect(labels.get('start')).toBe(7);
     expect(labels.get('loop')).toBeGreaterThan(7);
   });
+
+  it('compileProjectDetailed 返回每节点地址（精确节点定位）', () => {
+    const ir: IrScript = {
+      header: HEADER,
+      nodes: [
+        { kind: 'label', name: 'start' },
+        { kind: 'dia', text: 'a' },
+        { kind: 'comment', text: '无代码' },
+        { kind: 'dia', text: 'b' },
+      ],
+    };
+    const { labels, nodeAddrs } = compileProjectDetailed(ir, 'sjis');
+    // label 零字节：节点 0（label start）与其后节点 1（dia a）共享同一地址 7。
+    expect(nodeAddrs.get(0)).toBe(7);
+    expect(nodeAddrs.get(1)).toBe(7);
+    // comment 无代码，不产生地址。
+    expect(nodeAddrs.has(2)).toBe(false);
+    // 节点 3（dia b）在节点 1 之后。
+    expect(nodeAddrs.get(3)).toBeGreaterThan(7);
+    // 合成节点 marker 不应泄漏进用户 labels 表。
+    expect([...labels.keys()].some((name) => name.startsWith('@__node_'))).toBe(false);
+  });
 });

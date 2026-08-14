@@ -9,7 +9,7 @@ import type { IrScript } from '@hcb-editor/hcb/ir';
 import type { GameTables, TemplateCtx } from '../templates/types.js';
 import { assembleFlat, assembleFlatWithLabels } from './assemble.js';
 import { encodeFlatItems, encodeFlatItemsCode } from './encode.js';
-import { lower } from './lower.js';
+import { lower, lowerWithNodes, NODE_MARKER_PREFIX } from './lower.js';
 
 /** 底座二进制解码缓存：避免每次编译都重新解析 5MB 原版 HCB。 */
 const baseDecodeCache = new WeakMap<Uint8Array, HcbDecoded>();
@@ -42,6 +42,8 @@ export interface CompileWithBaseResult {
   readonly scriptEntry: number;
   /** label → 绝对代码地址（供 label 断点 jump）。 */
   readonly labels: ReadonlyMap<string, number>;
+  /** IR 节点索引 → 绝对代码地址（节点首条指令地址，供精确节点定位；comment 等无代码节点缺失）。 */
+  readonly nodeAddrs: ReadonlyMap<number, number>;
 }
 
 /**
@@ -93,9 +95,8 @@ export function compileWithBaseDetailed(
   // 库代码结束 = 剧情 main 插入点（对应 hcb_build.py 的 base_off）。
   const libEnd = mainOffset;
   const libCode = baseData.subarray(4, libEnd).slice();
-
   const templateCtx: TemplateCtx = { nls: ctx.nls, tables: ctx.tables };
-  const blocks = lower(ir, templateCtx);
+  const { blocks, nodeStartLabels } = lowerWithNodes(ir, templateCtx);
   const { items, labels: relativeLabels } = assembleFlatWithLabels(blocks, base.sysdesc, ctx.nls);
   const scriptStart = libEnd + extraFuncBytes.length;
   const scriptCode = encodeFlatItemsCode(items, scriptStart, ctx.nls);
@@ -104,10 +105,24 @@ export function compileWithBaseDetailed(
   patchU32References(libCode, mainOffset, scriptStart);
 
   // 相对偏移（从 4 起算）→ 绝对地址：scriptStart + (rel - 4)。
+  // 合成节点 marker 不进 labels 表，单独收集为「节点索引 → 绝对地址」。
   const labels = new Map<string, number>();
   for (const [name, rel] of relativeLabels) {
+    if (name.startsWith(NODE_MARKER_PREFIX)) {
+      continue;
+    }
     labels.set(name, scriptStart + (rel - 4));
   }
+  const nodeAddrs = new Map<number, number>();
+  nodeStartLabels.forEach((marker, index) => {
+    if (marker === undefined) {
+      return;
+    }
+    const rel = relativeLabels.get(marker);
+    if (rel !== undefined) {
+      nodeAddrs.set(index, scriptStart + (rel - 4));
+    }
+  });
 
   const code = new ByteWriter();
   code.bytes(libCode).bytes(extraFuncBytes).bytes(scriptCode);
@@ -118,5 +133,5 @@ export function compileWithBaseDetailed(
 
   const out = new ByteWriter();
   out.u32(sysDescOffset).bytes(code.toBytes()).bytes(tail);
-  return { bytes: out.toBytes(), scriptEntry: scriptStart, labels };
+  return { bytes: out.toBytes(), scriptEntry: scriptStart, labels, nodeAddrs };
 }

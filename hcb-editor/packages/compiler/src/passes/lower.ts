@@ -55,12 +55,34 @@ function condToAsm(cond: CondExpr): AsmInstruction[] {
   }
 }
 
-export function lower(ir: IrScript, ctx: TemplateCtx): AsmBlock[] {
+export interface LoweredOutput {
+  readonly blocks: AsmBlock[];
+  /** 每个 IR 节点（按序）首块的合成 label 名；无代码节点（comment）为 undefined。 */
+  readonly nodeStartLabels: readonly (string | undefined)[];
+}
+
+/** 节点首块合成 label 前缀（仅用于回填节点地址，不进用户 labels 表）。 */
+export const NODE_MARKER_PREFIX = '@__node_';
+
+/**
+ * lower + 为每个节点注入零字节合成 label，便于 assemble 阶段回填「节点 → 代码地址」。
+ * 合成 label 是空块，不改变任何指令字节 / 布局，只多出 label 地址记录。
+ */
+export function lowerWithNodes(ir: IrScript, ctx: TemplateCtx): LoweredOutput {
   const blocks: AsmBlock[] = [];
+  const nodeStartLabels: (string | undefined)[] = [];
   // 入口函数 prologue：init_stack 建立栈帧（与 hcb_build.py 的 header_bytes 一致：args=0, locals=0）。
   // 缺失会导致导出脚本不被识别为函数、entry_point 落入上一个库函数内部。
   blocks.push({ instructions: [{ op: 'init_stack', args: 0, locals: 0 }] });
-  for (const node of ir.nodes) {
+  for (let i = 0; i < ir.nodes.length; i += 1) {
+    const node = ir.nodes[i]!;
+    if (node.kind === 'comment') {
+      nodeStartLabels.push(undefined);
+      continue;
+    }
+    const marker = `${NODE_MARKER_PREFIX}${i}`;
+    blocks.push({ label: marker, instructions: [] });
+    nodeStartLabels.push(marker);
     switch (node.kind) {
       case 'label':
         blocks.push({ label: node.name, instructions: [] });
@@ -112,8 +134,6 @@ export function lower(ir: IrScript, ctx: TemplateCtx): AsmBlock[] {
           instructions: [...condToAsm(node.cond), { op: 'jz', target: node.else }, { op: 'jmp', target: node.then }],
         });
         break;
-      case 'comment':
-        break; // 编译时丢弃
       case 'raw':
         blocks.push({ instructions: [], raw: { bytes: node.bytes, relocations: node.relocations } });
         break;
@@ -121,5 +141,9 @@ export function lower(ir: IrScript, ctx: TemplateCtx): AsmBlock[] {
   }
   // 函数末尾补 ret，保证 CFG 有出口（避免无界环）
   blocks.push({ instructions: [{ op: 'ret' }] });
-  return blocks;
+  return { blocks, nodeStartLabels };
+}
+
+export function lower(ir: IrScript, ctx: TemplateCtx): AsmBlock[] {
+  return lowerWithNodes(ir, ctx).blocks;
 }
