@@ -42,10 +42,20 @@ function bgArguments(args: number, variant: number | undefined): AsmInstruction[
   if (args < 7) {
     return Array.from({ length: args }, () => ({ op: 'push_nil' as const }));
   }
-  // hcb_build.py::bgset：前六个参数保留，变体是第七个，剩余参数为 nil。
+  // hcb_build.py::bgset 入参布局（f_00005579 等底座背景函数读取）：
+  // - 显式细分编号（1/2/3 -> BGxxx_000/010/020/030）：编号在第七个入参（arg7，即 push_stack index=-5）。
+  // - 无细分编号 / 编辑器默认日景（variant 0 = BGxxx_000）：-1 在第八个入参（arg8，即 push_stack index=-4），
+  //   底座函数据此直接加载 BGxxx_000，不依赖尚未初始化的时段全局变量。
+  if (variant === undefined || variant === 0) {
+    return [
+      ...Array.from({ length: 7 }, () => ({ op: 'push_nil' as const })),
+      ...signedI8(-1),
+      ...Array.from({ length: Math.max(0, args - 8) }, () => ({ op: 'push_nil' as const })),
+    ];
+  }
   return [
     ...Array.from({ length: 6 }, () => ({ op: 'push_nil' as const })),
-    ...(variant === undefined ? signedI8(-1) : signedI8(variant)),
+    ...signedI8(variant),
     ...Array.from({ length: args - 7 }, () => ({ op: 'push_nil' as const })),
   ];
 }
