@@ -6,7 +6,14 @@
 
 import type { HcbSysdesc, Nls, SyscallEntry } from '@hcb-editor/hcb/core';
 import type { IrScript } from '@hcb-editor/hcb/ir';
-import type { BackgroundEntry, CharacterEntry, CgEntry, GameTables, TemplateCtx } from '../templates/types.js';
+import type {
+  AsmInstruction,
+  BackgroundEntry,
+  CharacterEntry,
+  CgEntry,
+  GameTables,
+  TemplateCtx,
+} from '../templates/types.js';
 import { compileWithBaseDetailed } from '../passes/compile.js';
 import { assembleFlatWithLabels } from '../passes/assemble.js';
 import { encodeFlatItems } from '../passes/encode.js';
@@ -39,6 +46,8 @@ interface BaseGameData {
   readonly globals: Readonly<Record<string, number>>;
   /** 剧情 main 脚本插入点（库代码结束），对应 hcb_build.py 的 base_off。 */
   readonly mainOffset: number;
+  /** 直达剧情入口前必须执行的底座原生场景初始化序言。 */
+  readonly entryPrologue?: readonly AsmInstruction[];
   /** 底座库二进制自身的字符串编码（base.chb 为 gbk，Sakura.hcb 为 sjis）。 */
   readonly nls: Nls;
 }
@@ -59,11 +68,55 @@ const SAKURA_MOYU_CGS: Readonly<Record<string, CgEntry>> = Object.fromEntries(
   Object.entries(sakuraMoyuCgs).map(([name, fn]) => [name, { fn }]),
 );
 
+/**
+ * Sakura 的剧情函数不是可在全空 GameData 中独立调用的函数。
+ * 原参考构建器在 `[start]` 处注入这段序言，用底座包装函数初始化消息系统、
+ * 场景状态和过渡参数。参数及调用地址逐字节对应 hcb_build.py.header_bytes
+ * （init_stack 由 lower 统一生成，因此不在此重复）。
+ */
+const SAKURA_MOYU_ENTRY_PROLOGUE: readonly AsmInstruction[] = [
+  // Launcher 以 nil 参数调用 f_0003470a；该函数才真正建立消息 Prim、TextBuff
+  // 槽位以及原版消息辅助线程。没有它，TextPrint 只能留下未加载的空槽。
+  { op: 'push_nil' },
+  { op: 'call', target: 'f_0003470a' },
+  { op: 'push_i8', value: 0 },
+  { op: 'call', target: 'f_00036839' },
+  { op: 'push_i8', value: 1 },
+  { op: 'neg' },
+  { op: 'push_string', text: '　' },
+  { op: 'call', target: 'f_00036860' },
+  { op: 'push_string', text: '　' },
+  { op: 'call', target: 'f_00038bd2' },
+  { op: 'push_i8', value: 2 },
+  { op: 'push_i8', value: 4 },
+  { op: 'push_i8', value: 1 },
+  { op: 'push_i8', value: 1 },
+  { op: 'push_nil' },
+  { op: 'call', target: 'f_0003677a' },
+  { op: 'push_i8', value: 13 },
+  { op: 'push_nil' },
+  { op: 'push_nil' },
+  { op: 'push_nil' },
+  { op: 'push_nil' },
+  { op: 'call', target: 'f_0003677a' },
+  { op: 'push_i8', value: 0 },
+  { op: 'push_i16', value: 1000 },
+  { op: 'push_nil' },
+  { op: 'push_nil' },
+  { op: 'push_nil' },
+  { op: 'push_nil' },
+  { op: 'push_nil' },
+  { op: 'push_nil' },
+  { op: 'push_nil' },
+  { op: 'call', target: 'f_0004115a' },
+];
+
 const BASES: Readonly<Record<string, BaseGameData>> = {
   'sakura-moyu': {
     ...sakuraMoyuBaseData,
     backgrounds: SAKURA_MOYU_BACKGROUNDS,
     cgs: SAKURA_MOYU_CGS,
+    entryPrologue: SAKURA_MOYU_ENTRY_PROLOGUE,
   },
 };
 
@@ -98,6 +151,7 @@ export interface LoadedBase {
   readonly sysdesc: HcbSysdesc;
   readonly tables: GameTables;
   readonly mainOffset: number;
+  readonly entryPrologue: readonly AsmInstruction[];
   readonly nls: Nls;
 }
 
@@ -115,6 +169,7 @@ export function loadBaseGame(game: string): LoadedBase {
       globals: data.globals,
     },
     mainOffset: data.mainOffset,
+    entryPrologue: data.entryPrologue ?? [],
     nls: data.nls,
   };
 }
@@ -177,7 +232,7 @@ export function compileProject(ir: IrScript, nls: Nls, opts: CompileProjectOptio
 
 /** compileProject + 返回 label 绝对地址表（供真实引擎 label 断点 jump）。 */
 export function compileProjectDetailed(ir: IrScript, nls: Nls, opts: CompileProjectOptions = {}): CompileProjectResult {
-  const { sysdesc, tables, mainOffset, nls: baseNls } = loadBaseGame(ir.header.game);
+  const { sysdesc, tables, mainOffset, entryPrologue, nls: baseNls } = loadBaseGame(ir.header.game);
 
   let characters = tables.characters;
   let backgrounds = tables.backgrounds;
@@ -239,7 +294,15 @@ export function compileProjectDetailed(ir: IrScript, nls: Nls, opts: CompileProj
   const ctx = { sysdesc, nls, tables: { characters, backgrounds, cgs: tables.cgs ?? {}, globals: tables.globals } };
 
   if (opts.baseData) {
-    return compileWithBaseDetailed(ir, ctx, opts.baseData, extraFuncBytes, mainOffset, baseNls);
+    return compileWithBaseDetailed(
+      ir,
+      ctx,
+      opts.baseData,
+      extraFuncBytes,
+      mainOffset,
+      baseNls,
+      entryPrologue,
+    );
   }
 
   // 脚本-only：代码区起点为 4，label 相对偏移即绝对地址。

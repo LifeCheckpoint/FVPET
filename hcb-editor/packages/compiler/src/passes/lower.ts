@@ -67,13 +67,19 @@ export const NODE_MARKER_PREFIX = '@__node_';
 /**
  * lower + 为每个节点注入零字节合成 label，便于 assemble 阶段回填「节点 → 代码地址」。
  * 合成 label 是空块，不改变任何指令字节 / 布局，只多出 label 地址记录。
+ * `entryPrologue` 用于底座游戏在直达剧情入口前执行其原生场景初始化；
+ * 脚本-only 编译不传该参数，保持通用输出不变。
  */
-export function lowerWithNodes(ir: IrScript, ctx: TemplateCtx): LoweredOutput {
+export function lowerWithNodes(
+  ir: IrScript,
+  ctx: TemplateCtx,
+  entryPrologue: readonly AsmInstruction[] = [],
+): LoweredOutput {
   const blocks: AsmBlock[] = [];
   const nodeStartLabels: (string | undefined)[] = [];
-  // 入口函数 prologue：init_stack 建立栈帧（与 hcb_build.py 的 header_bytes 一致：args=0, locals=0）。
-  // 缺失会导致导出脚本不被识别为函数、entry_point 落入上一个库函数内部。
-  blocks.push({ instructions: [{ op: 'init_stack', args: 0, locals: 0 }] });
+  // 入口函数 prologue：init_stack 建立栈帧。底座专用初始化紧随其后，
+  // 且位于首个节点 marker 之前，因此节点地址会自动包含序言偏移。
+  blocks.push({ instructions: [{ op: 'init_stack', args: 0, locals: 0 }, ...entryPrologue] });
   for (let i = 0; i < ir.nodes.length; i += 1) {
     const node = ir.nodes[i]!;
     if (node.kind === 'comment') {

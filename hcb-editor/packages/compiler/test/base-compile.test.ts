@@ -89,6 +89,9 @@ describe.skipIf(!fs.existsSync(BASE))('compileProject with local base binary', (
       .filter((i) => i.addr >= mainOffset && i.mnemonic === 'call' && i.args.kind === 'x32')
       .map((i) => (i.args.kind === 'x32' ? i.args.target : -1));
     expect(appendedCalls).toContain(croSpeakFn);
+    // 直达剧情入口不能跳过原版 launcher 的消息系统初始化，否则 TextPrint
+    // 只会写入未加载的空槽，full rfvp 不会创建可绘制的对话框文字 surface。
+    expect(appendedCalls).toContain(0x0003470a);
     expect(appendedCalls).not.toContain(mainOffset);
   });
 });

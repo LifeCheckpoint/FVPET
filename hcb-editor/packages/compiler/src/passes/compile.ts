@@ -6,7 +6,7 @@
 import { ByteWriter, type HcbSysdesc, type Nls } from '@hcb-editor/hcb/core';
 import { decodeHcb, type HcbDecoded } from '@hcb-editor/hcb/decompile';
 import type { IrScript } from '@hcb-editor/hcb/ir';
-import type { GameTables, TemplateCtx } from '../templates/types.js';
+import type { AsmInstruction, GameTables, TemplateCtx } from '../templates/types.js';
 import { assembleFlat, assembleFlatWithLabels } from './assemble.js';
 import { encodeFlatItems, encodeFlatItemsCode } from './encode.js';
 import { lower, lowerWithNodes, NODE_MARKER_PREFIX } from './lower.js';
@@ -58,8 +58,17 @@ export function compileWithBase(
   extraFuncBytes: Uint8Array = new Uint8Array(0),
   mainOffset: number,
   baseNls: Nls,
+  entryPrologue: readonly AsmInstruction[] = [],
 ): Uint8Array {
-  return compileWithBaseDetailed(ir, ctx, baseData, extraFuncBytes, mainOffset, baseNls).bytes;
+  return compileWithBaseDetailed(
+    ir,
+    ctx,
+    baseData,
+    extraFuncBytes,
+    mainOffset,
+    baseNls,
+    entryPrologue,
+  ).bytes;
 }
 
 /** 字节级替换 bytes 中所有等于 target 的小端 u32 值为 replacement（对齐无关，精确字节序列匹配）。 */
@@ -90,13 +99,14 @@ export function compileWithBaseDetailed(
   extraFuncBytes: Uint8Array = new Uint8Array(0),
   mainOffset: number,
   baseNls: Nls,
+  entryPrologue: readonly AsmInstruction[] = [],
 ): CompileWithBaseResult {
   const base = decodeBaseCached(baseData, baseNls);
   // 库代码结束 = 剧情 main 插入点（对应 hcb_build.py 的 base_off）。
   const libEnd = mainOffset;
   const libCode = baseData.subarray(4, libEnd).slice();
   const templateCtx: TemplateCtx = { nls: ctx.nls, tables: ctx.tables };
-  const { blocks, nodeStartLabels } = lowerWithNodes(ir, templateCtx);
+  const { blocks, nodeStartLabels } = lowerWithNodes(ir, templateCtx, entryPrologue);
   const { items, labels: relativeLabels } = assembleFlatWithLabels(blocks, base.sysdesc, ctx.nls);
   const scriptStart = libEnd + extraFuncBytes.length;
   const scriptCode = encodeFlatItemsCode(items, scriptStart, ctx.nls);
